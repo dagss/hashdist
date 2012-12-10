@@ -3,3 +3,7 @@
 *.pyo
 
 doc/build
+
+/build
+/.waf-*
+/.lock-*
