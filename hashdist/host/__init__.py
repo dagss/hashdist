@@ -2,11 +2,11 @@ import subprocess
 import errno
 
 from .host import WrongHostTypeError
-from ..core.cache import NullCache
+from ..core.cache import null_cache
 
 _host_packages_class = None
 
-def get_host_packages(cache=NullCache()):
+def get_host_packages(cache=null_cache):
     """Returns a HostPackages object corresponding to the current host
     """
     global _host_packages_class
