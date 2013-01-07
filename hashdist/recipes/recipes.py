@@ -200,7 +200,7 @@ class Recipe(object):
         return '<Recipe for %s>' % self.get_artifact_id()
 
     def _assemble_build_spec(self):
-       sources = []
+        sources = []
         for fetch in self.source_fetches:
             sources.append(fetch.get_spec())
 
