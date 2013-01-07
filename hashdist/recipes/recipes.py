@@ -200,9 +200,7 @@ class Recipe(object):
         return '<Recipe for %s>' % self.get_artifact_id()
 
     def _assemble_build_spec(self):
-        import time
-        t0 = time.time()
-        sources = []
+       sources = []
         for fetch in self.source_fetches:
             sources.append(fetch.get_spec())
 
@@ -217,7 +215,6 @@ class Recipe(object):
                    commands=commands, files=files, dependencies=dep_specs,
                    parameters=parameters)
         build_spec = core.BuildSpec(doc)
-        print build_spec.artifact_id, time.time() - t0
         return build_spec
 
     # Subclasses may override the following
