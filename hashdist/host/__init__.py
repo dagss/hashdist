@@ -1,7 +1,9 @@
 import subprocess
 import errno
 
-def get_host_packages(cache):
+from ..core.cache import NullCache
+
+def get_host_packages(cache=NullCache()):
     """Returns a HostPackages object corresponding to the current host
     """
     try:
