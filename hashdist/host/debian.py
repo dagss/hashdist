@@ -21,7 +21,7 @@ class DebianHostPackages(HostPackages):
             sh.apt_cache('-h')
         except sh.CommandNotFound, e:
             raise WrongHostTypeError('Not a Debian-based system')
-    
+
     def is_package_installed(self, pkgname):
         try:
             out = sh.dpkg_query('-W', '-f', '${Status}', pkgname)
