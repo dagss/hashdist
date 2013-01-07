@@ -1,16 +1,19 @@
 import re
 from ..deps import sh
 
-from .host import WrongHostTypeError, Host
+from ..core.cache import NullCache
+
+from .host import WrongHostTypeError, HostPackages
 
 _DEPENDS = re.compile(r'\s*Depends: ([^<>]+)')
 _SHA1 = re.compile(r'SHA1: (.*)$')
 
-
-
-class DebianHost(Host):
-
-    def __init__(self):
+class DebianHostPackages(HostPackages):
+    def __init__(self, cache=NullCache()):
+        if cache.get(DebianHostPackages, 'is_present', False):
+            # check already done
+            return
+        
         # Check that all commands are available
         try:
             sh.dpkg_query('-h')
@@ -27,6 +30,11 @@ class DebianHost(Host):
         return installed
 
     def get_immediate_dependencies(self, pkgname):
+        if pkgname == 'libc6':
+            # for now, break dependency cycle here; TODO: proper treatment of
+            # cyclic dependencies
+            return ()
+            
         deps = set()
         for line in sh.apt_cache('depends', '--installed', pkgname):
             m = _DEPENDS.match(line.strip())
@@ -52,3 +60,5 @@ class DebianHost(Host):
         except sh.ErrorReturnCode, e:
             raise UnknownPackageError(pkgname)
 
+    def get_system_description(self):
+        return 'Debian'
