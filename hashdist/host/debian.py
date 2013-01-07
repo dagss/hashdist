@@ -1,28 +1,12 @@
 import re
 from ..deps import sh
 
-from ..core.cache import NullCache
+from ..core.cache import NullCache, cached_method
 
 from .host import WrongHostTypeError, HostPackages
 
 _DEPENDS = re.compile(r'\s*Depends: ([^<>]+)')
 _SHA1 = re.compile(r'SHA1: (.*)$')
-
-from functools import wraps
-
-def cached_method(cls):
-    def decorator(func):
-        @wraps(func)
-        def replacement(self, *args):
-            key = (func.__name__,) + tuple(args)
-            try:
-                x = self.cache.get(cls, key)
-            except KeyError:
-                x = func(*args)
-                self.cache.put(cls, key, x)
-            return x
-        return replacement
-    return decorator
 
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
