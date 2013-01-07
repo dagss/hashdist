@@ -1,7 +1,7 @@
 import re
 from ..deps import sh
 
-from ..core.cache import NullCache, cached_method
+from ..core.cache import null_cache, cached_method
 
 from .host import WrongHostTypeError, HostPackages
 
