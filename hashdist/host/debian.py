@@ -9,11 +9,11 @@ _DEPENDS = re.compile(r'\s*Depends: ([^<>]+)')
 _SHA1 = re.compile(r'SHA1: (.*)$')
 
 class DebianHostPackages(HostPackages):
-    def __init__(self, cache=NullCache()):
+    def __init__(self, cache=null_cache):
         self.cache = cache
         
     @staticmethod
-    def is_supported(cache=NullCache()):
+    def is_supported(cache=null_cache):
         self.cache = cache
         if cache.get(DebianHostPackages, ('is_debian_system',), False):
             # check already done
