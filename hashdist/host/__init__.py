@@ -16,7 +16,7 @@ def get_host_packages(cache=NullCache()):
         proc.communicate()
         proc.wait()
         from .debian import DebianHostPackages
-        return DebianHostPackages()
+        return DebianHostPackages(cache)
 
     raise NotImplementedError('No HostPackages support for this system')
     
