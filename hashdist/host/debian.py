@@ -8,7 +8,7 @@ from .host import WrongHostTypeError, HostPackages
 _DEPENDS = re.compile(r'\s*Depends: ([^<>]+)')
 _SHA1 = re.compile(r'SHA1: (.*)$')
 
-cached_method = cached_method('hashdist.host.debian')
+cache = cached_method('hashdist.host.debian')
 
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=null_cache):
@@ -30,7 +30,7 @@ class DebianHostPackages(HostPackages):
             cache.put(DebianHostPackages, ('is_debian_system',), result)
         return result
 
-    @cached_method(DebianHostPackages)
+    @cache
     def is_package_installed(self, pkgname):
         try:
             out = sh.dpkg_query('-W', '-f', '${Status}', pkgname)
@@ -39,7 +39,7 @@ class DebianHostPackages(HostPackages):
             installed = False
         return installed
 
-    @cached_method(DebianHostPackages)
+    @cache
     def get_immediate_dependencies(self, pkgname):
         if pkgname == 'libc6':
             # for now, break dependency cycle here; TODO: proper treatment of
@@ -53,7 +53,7 @@ class DebianHostPackages(HostPackages):
                 deps.add(m.group(1))
         return deps
 
-    @cached_method(DebianHostPackages)
+    @cache
     def get_files_of(self, pkgname):
         """Returns the names of the files installed by the given package
         """
@@ -67,7 +67,7 @@ class DebianHostPackages(HostPackages):
             result.append(line)
         return result
 
-    @cached_method(DebianHostPackages)
+    @cache
     def get_package_key(self, pkgname):
         try:
             for line in sh.apt_cache('show', pkgname):
