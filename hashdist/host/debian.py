@@ -14,8 +14,8 @@ class DebianHostPackages(HostPackages):
         
     @staticmethod
     def is_supported(cache=null_cache):
-        x = cache.get(DebianHostPackages, ('is_debian_system',), None)
-        if x is None:
+        result = cache.get(DebianHostPackages, ('is_debian_system',), None)
+        if result is None:
             # Check that all commands are available
             try:
                 sh.dpkg_query('-h')
@@ -25,7 +25,8 @@ class DebianHostPackages(HostPackages):
                 result = False
             else:
                 result = True
-                cache.put(DebianHostPackages, ('is_debian_system',), result)
+            cache.put(DebianHostPackages, ('is_debian_system',), result)
+        return result
         
 
     @cached_method(DebianHostPackages)
