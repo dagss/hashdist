@@ -3,20 +3,23 @@ import errno
 
 from ..core.cache import NullCache
 
+_host_packages_class = None
+
 def get_host_packages(cache=NullCache()):
     """Returns a HostPackages object corresponding to the current host
     """
-    try:
-        proc = subprocess.Popen(['dpkg-query', '--version'], stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-    except OSError, e:
-        if e.errno != errno.ENOENT:
-            raise
-    else:
-        proc.communicate()
-        proc.wait()
-        from .debian import DebianHostPackages
-        return DebianHostPackages(cache)
+    global _host_packages_class
+    if system is None:
+        try:
+            proc = subprocess.Popen(['dpkg-query', '--version'], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+        except OSError, e:
+            if e.errno != errno.ENOENT:
+                raise
+        else:
+            proc.communicate()
+            proc.wait()
+            _system_type = DebianHostPackages
 
     raise NotImplementedError('No HostPackages support for this system')
     
