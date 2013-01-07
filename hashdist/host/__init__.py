@@ -9,7 +9,7 @@ def get_host_packages(cache=NullCache()):
     """Returns a HostPackages object corresponding to the current host
     """
     global _host_packages_class
-    if system is None:
+    if _host_packages_class is None:
         try:
             proc = subprocess.Popen(['dpkg-query', '--version'], stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
