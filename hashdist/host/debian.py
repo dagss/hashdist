@@ -14,7 +14,8 @@ def cached_method(cls):
     def decorator(func):
         @wraps(func)
         def replacement(self, *args):
-            key = (cls, func.__name__, args)
+            key = (func.__name__,) + tuple(args)
+            if self.cache.get(cls, key, 
 
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
