@@ -14,6 +14,7 @@ import os
 import tempfile
 import cPickle as pickle
 import errno
+from functools import wraps
 
 from .hasher import Hasher
 from .fileutils import silent_makedirs
@@ -141,3 +142,18 @@ class NullCache(object):
             raise KeyError('keys are never found in the NullCache')
         else:
             return default
+
+
+def cached_method(cls):
+    def decorator(func):
+        @wraps(func)
+        def replacement(self, *args):
+            key = (func.__name__,) + tuple(args)
+            try:
+                x = self.cache.get(cls, key)
+            except KeyError:
+                x = func(*args)
+                self.cache.put(cls, key, x)
+            return x
+        return replacement
+    return decorator

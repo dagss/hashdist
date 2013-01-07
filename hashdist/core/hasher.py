@@ -78,7 +78,7 @@ class DocumentSerializer(object):
     """
     def __init__(self, wrapped):
         self._wrapped = wrapped
-    
+
     def update(self, x):
         # note: w.update does hashing of str/buffer, self.update recurses to treat object
         w = self._wrapped
