@@ -8,8 +8,13 @@ from .host import WrongHostTypeError, HostPackages
 _DEPENDS = re.compile(r'\s*Depends: ([^<>]+)')
 _SHA1 = re.compile(r'SHA1: (.*)$')
 
+from functools import wraps
+
 def cached_method(cls):
-    def decorator
+    def decorator(func):
+        @wraps(func)
+        def replacement(self, *args):
+            key = (cls, func.__name__, args)
 
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
