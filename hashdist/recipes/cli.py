@@ -9,7 +9,8 @@ import tempfile
 
 from ..hdist_logging import Logger, DEBUG, INFO
 
-from ..core import InifileConfiguration, BuildStore, SourceCache, DEFAULT_CONFIG_FILENAME
+from ..core import (InifileConfiguration, BuildStore, SourceCache, DEFAULT_CONFIG_FILENAME,
+                    DiskCache)
 from .recipes import build_recipes
 
 __all__ = ['stack_script_cli']
