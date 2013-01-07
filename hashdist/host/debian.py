@@ -36,7 +36,8 @@ class DebianHostPackages(HostPackages):
             x = self._get_immediate_dependencies(pkgname)
             self.cache.put(DebianHostPackages, ('dependencies', pkgname), x)
         return x
-        
+
+    def _get_immediate_dependencies(self, pkgname):
         if pkgname == 'libc6':
             # for now, break dependency cycle here; TODO: proper treatment of
             # cyclic dependencies
