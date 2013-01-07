@@ -49,7 +49,8 @@ def stack_script_cli(root_recipe):
     build_store = BuildStore.create_from_config(config, logger)
     source_cache = SourceCache.create_from_config(config, logger)
     cache = DiskCache.create_from_config(config, logger)
-    
+
+    root_recipe.initialize(logger, cache)
     sys.stderr.write('Status:\n\n%s\n\n' % root_recipe.format_tree(build_store))
     if build_store.is_present(root_recipe.get_build_spec()):
         sys.stderr.write('Everything up to date!\n')
