@@ -8,6 +8,9 @@ from .host import WrongHostTypeError, HostPackages
 _DEPENDS = re.compile(r'\s*Depends: ([^<>]+)')
 _SHA1 = re.compile(r'SHA1: (.*)$')
 
+def cached_method(cls):
+    def decorator
+
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
         self.cache = cache
