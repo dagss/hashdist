@@ -21,6 +21,8 @@ def cached_method(cls):
                 x = func(*args)
                 self.cache.put(cls, key, x)
             return x
+        return replacement
+    return decorator
 
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
