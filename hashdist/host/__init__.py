@@ -1,7 +1,7 @@
 import subprocess
 import errno
 
-def probe_host_packages_api():
+def get_host_packages(cache):
     """Returns a HostPackages object corresponding to the current host
     """
     try:
