@@ -14,6 +14,7 @@ def get_host_packages(cache=NullCache()):
         result = None
 
         from .debian import DebianHostPackages
+        if DebianHostPackages.is_supported(cache):
         try:
             result = DebianHostPackages(cache)
         except WrongHostTypeError:
