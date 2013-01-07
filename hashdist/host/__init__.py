@@ -11,8 +11,9 @@ def get_host_packages(cache=NullCache()):
     """
     global _host_packages_class
     if _host_packages_class is None:
-        from .debian import DebianHostPackages
         result = None
+
+        from .debian import DebianHostPackages
         try:
             result = DebianHostPackages(cache)
         except WrongHostTypeError:
