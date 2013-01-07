@@ -14,17 +14,19 @@ class DebianHostPackages(HostPackages):
         
     @staticmethod
     def is_supported(cache=null_cache):
-        self.cache = cache
-        if cache.get(DebianHostPackages, ('is_debian_system',), False):
-            # check already done
-            return
+        x = cache.get(DebianHostPackages, ('is_debian_system',), None)
+        if x is None:
+            # Check that all commands are available
+            try:
+                sh.dpkg_query('-h')
+                sh.apt_cache('-h')
+            except sh.CommandNotFound, e:
+                raise WrongHostTypeError('Not a Debian-based system')
+                result = False
+            else:
+                result = True
+                cache.put(DebianHostPackages, ('is_debian_system',), result)
         
-        # Check that all commands are available
-        try:
-            sh.dpkg_query('-h')
-            sh.apt_cache('-h')
-        except sh.CommandNotFound, e:
-            raise WrongHostTypeError('Not a Debian-based system')
 
     @cached_method(DebianHostPackages)
     def is_package_installed(self, pkgname):
