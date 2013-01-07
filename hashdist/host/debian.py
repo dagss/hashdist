@@ -27,7 +27,6 @@ class DebianHostPackages(HostPackages):
                 result = True
             cache.put(DebianHostPackages, ('is_debian_system',), result)
         return result
-        
 
     @cached_method(DebianHostPackages)
     def is_package_installed(self, pkgname):
