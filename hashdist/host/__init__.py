@@ -15,23 +15,8 @@ def get_host_packages(cache=NullCache()):
 
         from .debian import DebianHostPackages
         if DebianHostPackages.is_supported(cache):
-        try:
-            result = DebianHostPackages(cache)
-        except WrongHostTypeError:
-            pass
-        except:
-            raise
-        
-        try:
-            proc = subprocess.Popen(['dpkg-query', '--version'], stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE)
-        except OSError, e:
-            if e.errno != errno.ENOENT:
-                raise
+            _host_packages_class = DebianHostPackages
         else:
-            proc.communicate()
-            proc.wait()
-            _system_type = DebianHostPackages
-
-    raise NotImplementedError('No HostPackages support for this system')
+            raise NotImplementedError('No HostPackages support for this system')
+    return _host_packages_class(cache)
     
