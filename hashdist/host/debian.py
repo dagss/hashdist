@@ -11,6 +11,10 @@ _SHA1 = re.compile(r'SHA1: (.*)$')
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
         self.cache = cache
+        
+    @staticmethod
+    def is_supported(cache=NullCache()):
+        self.cache = cache
         if cache.get(DebianHostPackages, ('is_debian_system',), False):
             # check already done
             return
