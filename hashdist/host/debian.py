@@ -15,7 +15,12 @@ def cached_method(cls):
         @wraps(func)
         def replacement(self, *args):
             key = (func.__name__,) + tuple(args)
-            if self.cache.get(cls, key, 
+            try:
+                x = self.cache.get(cls, key)
+            except KeyError:
+                x = func(*args)
+                self.cache.put(cls, key, x)
+            return x
 
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
