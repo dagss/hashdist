@@ -61,6 +61,7 @@ class DebianHostPackages(HostPackages):
                 deps.add(m.group(1))
         return deps
 
+    @cached_method(DebianHostPackages)
     def get_files_of(self, pkgname):
         """Returns the names of the files installed by the given package
         """
@@ -74,6 +75,7 @@ class DebianHostPackages(HostPackages):
             result.append(line)
         return result
 
+    @cached_method(DebianHostPackages)
     def get_package_key(self, pkgname):
         try:
             for line in sh.apt_cache('show', pkgname):
