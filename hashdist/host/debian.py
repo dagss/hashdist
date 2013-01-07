@@ -11,7 +11,7 @@ _SHA1 = re.compile(r'SHA1: (.*)$')
 class DebianHostPackages(HostPackages):
     def __init__(self, cache=NullCache()):
         self.cache = cache
-        if cache.get(DebianHostPackages, 'is_debian_system', False):
+        if cache.get(DebianHostPackages, ('is_debian_system',), False):
             # check already done
             return
         
@@ -31,7 +31,7 @@ class DebianHostPackages(HostPackages):
         return installed
 
     def get_immediate_dependencies(self, pkgname):
-
+        if self.cache.get(DebianHostPackages, ('dependencies', pkgname) 
         
         if pkgname == 'libc6':
             # for now, break dependency cycle here; TODO: proper treatment of
