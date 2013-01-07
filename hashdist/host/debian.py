@@ -31,7 +31,9 @@ class DebianHostPackages(HostPackages):
         return installed
 
     def get_immediate_dependencies(self, pkgname):
-        if self.cache.get(DebianHostPackages, ('dependencies', pkgname) 
+        x = self.cache.get(DebianHostPackages, ('dependencies', pkgname), None)
+        if x is not None:
+            return x
         
         if pkgname == 'libc6':
             # for now, break dependency cycle here; TODO: proper treatment of
