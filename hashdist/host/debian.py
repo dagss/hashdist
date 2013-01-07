@@ -38,6 +38,7 @@ class DebianHostPackages(HostPackages):
         except sh.CommandNotFound, e:
             raise WrongHostTypeError('Not a Debian-based system')
 
+    @cached_method(DebianHostPackages)
     def is_package_installed(self, pkgname):
         try:
             out = sh.dpkg_query('-W', '-f', '${Status}', pkgname)
@@ -46,14 +47,8 @@ class DebianHostPackages(HostPackages):
             installed = False
         return installed
 
+    @cached_method(DebianHostPackages)
     def get_immediate_dependencies(self, pkgname):
-        x = self.cache.get(DebianHostPackages, ('dependencies', pkgname), None)
-        if x is None:
-            x = self._get_immediate_dependencies(pkgname)
-            self.cache.put(DebianHostPackages, ('dependencies', pkgname), x)
-        return x
-
-    def _get_immediate_dependencies(self, pkgname):
         if pkgname == 'libc6':
             # for now, break dependency cycle here; TODO: proper treatment of
             # cyclic dependencies
