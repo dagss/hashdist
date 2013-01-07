@@ -47,6 +47,7 @@ def stack_script_cli(root_recipe):
     config = InifileConfiguration.create(args.config)
     build_store = BuildStore.create_from_config(config, logger)
     source_cache = SourceCache.create_from_config(config, logger)
+    cache = DiskCache.create_from_config(config, logger)
     
     sys.stderr.write('Status:\n\n%s\n\n' % root_recipe.format_tree(build_store))
     if build_store.is_present(root_recipe.get_build_spec()):

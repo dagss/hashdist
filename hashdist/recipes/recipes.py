@@ -74,6 +74,48 @@ class Recipe(object):
         self.dependencies = dependencies
         self.env = env
         self._build_spec = None
+        self.is_initialized = False
+
+    def initialize(self, logger, cache):
+        """Initializes the object and its dependencies.
+
+        Any recipe initialization which either a) takes a significant
+        amount of time or b) requires interaction with the host system
+        should be done after construction in this method. This is so
+        that declaration of a Recipe is fast, and so that one can
+        declare many dependencies in scripts without actually using
+        them.
+
+        Before this method is called, no other methods can be called (only the
+        constructor). This method is free to modify any attribute, including
+        dependencies.
+
+        Existing entries in ``self.dependencies`` (passed to the constructor)
+        will have initialize() called prior to ``self`` being constructed.
+        Any new entries added to ``self.dependencies`` should already
+        have been initialized.
+
+        After calling this method, ``self`` is considered immutable.
+
+        Subclasses should override _construct.
+
+        Parameters
+        ----------
+
+        logger : Logger instance
+            Used for logging when interacting with the host system. The recipe
+            should not hold on to this after initialization.
+
+        cache : Cache instance
+            See :mod:`hashdist.core.cache`. The recipe should not hold on to
+            this after initialization.
+        """
+        if self.is_initialized:
+            return
+        for dep_name, dep in self.dependencies.iteritems():
+            dep.initialize(logger, cache)
+        self._initialize(logger, cache)
+        self.is_initialized = True
 
     def get_build_spec(self):
         """
@@ -176,6 +218,8 @@ class Recipe(object):
         return core.BuildSpec(doc)
 
     # Subclasses may override the following
+    def _initialize(self, logger, cache):
+        pass
 
     def get_dependencies_spec(self):
         dep_specs = []
