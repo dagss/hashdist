@@ -53,6 +53,10 @@ class DebianHostPackages(HostPackages):
     def get_files_of(self, pkgname):
         """Returns the names of the files installed by the given package
         """
+        x = self.cache.get(DebianHostPackages, ('get_files_of', pkgname), None)
+        if x is None:
+            x = self._get_files_if(pkgname)
+
         result = []
         for line in sh.dpkg_query('--listfiles', pkgname):
             line = line.strip()
