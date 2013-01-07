@@ -67,8 +67,7 @@ from string import Template
 
 from ..hdist_logging import null_logger
 
-from .ant_glob import glob_files
-
+from ..deps.distlib.glob import iglob as ant_iglob
 
 def expandtemplate(s, env):
     return Template(s).substitute(env)
@@ -106,8 +105,9 @@ def _put_actions(makedirs_cache, action_name, force, source, dest, actions):
     
 def _glob_actions(rule, excluded, makedirs_cache, env, actions):
     select = expandtemplate(rule['select'], env)
-    selected = set(glob_files(select, ''))
+    selected = set(x for x in ant_iglob(select) if os.path.isfile(x))
     selected.difference_update(excluded)
+    print select, selected
     if len(selected) == 0:
         return
 

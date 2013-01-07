@@ -45,8 +45,8 @@ respective authors.
      * license: MIT
      * homepage: https://github.com/amoffat/sh
 
- * pyparsing [NOTE: NOT IN USE in v.0.1, may be removed]
-     * version: 1.5.7
-     * main author: Paul McGuire
-     * license: MIT
-     * homepage:  http://pyparsing.wikispaces.com/
+ * hashdist/deps/distlib
+     * commit: a740f6e
+     * authors: See ``distlib-CONTRIBUTORS.txt``
+     * license: Python license, see ``distlib-LICENSE.txt``)
+     * homepage: https://bitbucket.org/vinay.sajip/distlib
