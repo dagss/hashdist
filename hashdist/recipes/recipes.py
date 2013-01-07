@@ -112,12 +112,10 @@ class Recipe(object):
         """
         if self.is_initialized:
             return
-        print id(self), self.is_initialized
         for dep_name, dep in self.dependencies.iteritems():
             dep.initialize(logger, cache)
         self._initialize(logger, cache)
         self.is_initialized = True
-        print id(self), self.is_initialized
 
     def get_build_spec(self):
         """
