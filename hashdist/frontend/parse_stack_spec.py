@@ -69,38 +69,6 @@ def parse_action(key, value):
     else:
         return key, Assign(key, value)
 
-def transform_rules(doc, parent_exprs=[]):
-    """Turns a tree of conditions/selectors and attribute actions into a list
-
-    Turns::
-
-        project=foo:
-            version=bar:
-                a: 1
-            b: 2
-        a: 3
-        c: 4
-
-    Into::
-
-        {"a": [([Match("project", "foo"), Match("version", "bar")], Assign(1)),
-               ...],
-         ...}
-    """
-    result = {}
-    # traverse in sorted order, just to make unit tests predictable
-    keys = sorted(doc.keys())
-    for key in keys:
-        value = doc[key]
-        expr = parse_expression(key)
-        if expr:
-            for merge_key, merge_value in transform_rules(value, parent_exprs + [expr]).items():
-                result.setdefault(merge_key, []).extend(merge_value)
-        else:
-            attrname, action = parse_action(key, value)
-            result.setdefault(attrname, []).append((parent_exprs, action))
-    return result
-
 def evaluate_rules(rules, cfg, attrs=None):
     """Evaluates the rules given variables in `cfg` to produce a resulting document
 
