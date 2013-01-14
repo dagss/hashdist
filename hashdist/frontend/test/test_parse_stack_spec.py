@@ -4,7 +4,14 @@ from nose.tools import eq_, ok_, assert_raises
 from .. import parse_stack_spec
 from ..parse_stack_spec import *
 from pprint import pprint
-    
+from textwrap import dedent
+
+from ...core.test.utils import temp_dir
+
+def cat(filename, contents):
+    with open(filename, 'w') as f:
+        f.write(dedent(contents))
+
 def test_parse_dict_with_rules():
     doc = yaml.safe_load('''
     project=foo:
@@ -44,7 +51,7 @@ def test_parse_list_with_rules():
 
 
 
-def test_evaluate_rules_dict():
+def test_evaluate_dict_with_rules():
     rules = parse_dict_with_rules(yaml.safe_load('''
     project=foo:
         version=1.1:
@@ -70,7 +77,7 @@ def test_evaluate_rules_dict():
     with assert_raises(IllegalStackSpecError):
         evaluate_dict_with_rules(rules, dict(project='foo'))
     
-def test_evaluate_rules_list():
+def test_evaluate_list_with_rules():
     rules = parse_list_with_rules(yaml.safe_load('''
     - project=bar:
       - bar
@@ -89,3 +96,42 @@ def test_evaluate_rules_list():
     eq_(['foo'],
         evaluate_list_with_rules(rules, dict(project='baz')))
     
+def test_include():
+    with temp_dir() as d:
+        cat(pjoin(d, 'stack.yml'), '''\
+        include:
+          - foo
+          - project=baz:
+            - baz
+
+        rules:
+          a: a
+          b: b
+          project=baz:
+            c: c
+        ''')
+
+        cat(pjoin(d, 'foo.yml'), '''\
+        include:
+          - bar
+        rules:
+          foo_a: foo_a
+          c: foo_c
+        ''')
+
+        cat(pjoin(d, 'bar.yml'), '''\
+        rules:
+          two_plus_two=4:
+            x=x
+        ''')
+        
+        cat(pjoin(d, 'baz.yml'), '''\
+        rules:
+          baz_a: baz_a
+          two_plus_two=4:
+            y=y
+        ''')
+
+        print d
+        print parse_stack_spec(d)
+        

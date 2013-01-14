@@ -159,30 +159,55 @@ def evaluate_list_with_rules(rules, cfg, out_list=None):
     return out_list
 
 
-def recursive_load(filename, encountered=None):
+
+class TreeStackSpec(object):
     """
-    Loads YAML-files, following the '/include' attribute
+    A stack spec stored as the tree provided by the user.
+    """
+    def __init__(self, docs):
+        self.docs = docs
+
+
+def parse_stack_spec(filename, encountered=None, parent_conditions=()):
+    """
+    Loads stack spec files
     """
     if encountered is None:
         encountered = set()
     if os.path.isdir(filename):
-        filename += 'stack.yml'
+        filename = pjoin(filename, 'stack.yml')
     filename = os.path.realpath(filename)
     if filename in encountered:
-        raise IllegalStackSpecError("Inifinite include loop")
+        raise IllegalStackSpecError("Infinite include loop")
     encountered.add(filename)
     dir_name = os.path.dirname(filename)
     with open(filename) as f:
         doc = yaml.safe_load(f)
-    docs = []
+
+    def resolve_included_file(basename):
+        return pjoin(dir_name, basename) + '.yml'
+
+    def walk(node, parent_conditions):
+        # walk conditions in include section; for every leaf call parse_stack_spec
+        # with given parent_conditions
+        result = []
+        for expr, arg in node:
+            if expr is None:
+                included_doc = parse_stack_spec(resolve_included_file(arg), parent_conditions)
+            else:
+                walk(arg, parent_conditions + (expr,))
+
+    include = parse_list_with_rules(doc.get('include', []))
+    walk(include)
+
+    
+    print include
+    return
     for include in doc.get('include', ()):
+        print include
         included_filename = pjoin(dir_name, include) + '.yml'
         if not os.path.isfile(included_filename):
             raise IllegalStackSpecError('Included file "%s" not found')
         parse_stack_spec(included_filename, encountered)
-    return docs
+    #return docs
 
-def parse_stack_spec(filename):
-    docs = recursive_load(filename)
-    doc = merge_docs(docs)
-    return doc
