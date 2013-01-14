@@ -1,0 +1,11 @@
+include:
+  - sources
+  - project=numpy:
+      - build
+
+profile:
+  numpy:
+    version: 1.6.2
+  scipy:
+  zlib:
+    from_host: true
