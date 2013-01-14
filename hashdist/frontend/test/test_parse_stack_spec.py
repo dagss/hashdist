@@ -5,24 +5,6 @@ from .. import parse_stack_spec
 from ..parse_stack_spec import *
 from pprint import pprint
     
-
-def test_transform_rules():
-    doc = yaml.safe_load('''
-    project=foo:
-        version=bar:
-            a: 1
-        b: 2
-    a: 3
-    c: 4
-    ''')
-    t = transform_rules(doc)
-    eq_({'a': [([], Assign('a', 3)),
-               ([Match('project', 'foo'), Match('version', 'bar')], Assign('a', 1))],
-         'b': [([Match('project', 'foo')], Assign('b', 2))],
-         'c': [([], Assign('c', 4))]},
-        t)
-
-
 def test_parse_rules_doc():
     doc = yaml.safe_load('''
     project=foo:
