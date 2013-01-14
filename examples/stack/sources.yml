@@ -1,0 +1,49 @@
+# Maps versions->source hashes, and also Debian and RedHat packages
+#
+#
+
+build:
+  project=numpy:
+    debian: python-numpy
+    redhat: python-numpy
+
+    github-repo: numpy/numpy
+    version=1.6.1:
+      sources: git:68538b74483009c2c2d1644ef00397014f95a696
+    version=1.6.2:
+      sources: git:ca07bce202ae26b6f0a73870eb2ef0b88e0210c5
+
+  project=szip:
+    github-repo: erdc-cm/szip
+    version=2.1:
+      sources: git:87863577a4656d5414b0d598c91fed1dd227f74a
+
+  project=python:
+    download: http://python.org/ftp/python/$version/Python-$version.tar.bz2
+    version=2.7.3:
+      sources: tar.bz2:ojsfpyi4wfj23q7ufcvpdea7yvq2g5gd
+
+  project=zlib:
+    debian: zlib1g-dev
+    download: http://downloads.sourceforge.net/project/libpng/zlib/$version/zlib-$version.tar.gz
+    version=1.2.7:
+      sources: tar.gz:7kojzbry564mxdxv4toviu7ekv2r4hct
+
+
+  project=petsc:
+    download:  http://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-$version.tar.gz
+    version=3.3-p5:
+      tar.gz:usqunrdj25vdkhfgmococctfx7t3zp6c
+
+# sources:
+#   github:
+#     - numpy/numpy
+#     - scipy/scipy
+#     - hashdist/hdist-jail
+#     - xianyi/OpenBLAS
+#     - erdc-cm/szip
+#   archives:
+#     - http://downloads.sourceforge.net/project/libpng/zlib/1.2.7/zlib-1.2.7.tar.gz:
+#         tar.gz:7kojzbry564mxdxv4toviu7ekv2r4hct
+#     - http://www.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.8.10.tar.bz2:
+#         tar.bz2:7jxgwn5xs5xnvsdaomvypridodr35or2

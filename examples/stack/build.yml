@@ -1,0 +1,27 @@
+build:
+  project=numpy:
+    type: distutils
+    debian: python-numpy
+    redhat: python-numpy
+    github-repo: numpy/numpy
+
+    emit-files:
+      site.cfg: |
+        [DEFAULT]
+        library_dirs = /usr/local/lib
+        include_dirs = /usr/local/include
+        
+        [blas_opt]
+        libraries = f77blas, cblas, atlas
+
+  project=python:
+    version=2.7.3:
+      archive: http://python.org/ftp/python/2.7.3/Python-2.7.3.tar.bz2
+      sources: tar.bz2:ojsfpyi4wfj23q7ufcvpdea7yvq2g5gd
+
+  project=hdf5:
+    type: configure-make-install
+    
+
+  project=zlib:
+    type: configure-make-install
