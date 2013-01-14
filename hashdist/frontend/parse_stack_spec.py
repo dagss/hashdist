@@ -51,6 +51,8 @@ def parse_expression(s):
         if s.count('=') != 1:
             raise IllegalStackSpecError('= encountered more than once in %s' % s)
         return Match(*s.split('='))
+    else:
+        return None
 
 def parse_action(key, value):
     """Parses "attr: value" nodes in the rules
@@ -69,8 +71,48 @@ def parse_action(key, value):
     else:
         return key, Assign(key, value)
 
-def evaluate_rules(rules, cfg, attrs=None):
-    """Evaluates the rules given variables in `cfg` to produce a resulting document
+def parse_dict_with_rules(doc):
+    """Given the YAML-parsed strings, to the extra-interpretation of rules and actions
+
+    Results in a new document with the same rule nesting structure, but with
+    strings replaced with AST nodes
+    """
+    result = []
+    for key, value in doc.items():
+        expr = parse_expression(key)
+        if expr:
+            result.append((expr, parse_dict_with_rules(value)))
+        else:
+            attrname, action = parse_action(key, value)
+            result.append((None, action))
+    return result
+
+def parse_list_with_rules(doc):
+    """Given the YAML-parsed strings, to the extra-interpretation of rules and actions
+
+    Results in a new document with the same rule nesting structure, but with
+    strings replaced with AST nodes
+    """
+    if not type(doc) is list:
+        raise IllegalStackSpecError('expected list but found %r' % type(doc))
+
+    result = []
+    for item in doc:
+        if isinstance(item, dict):
+            if len(item) != 1:
+                raise IllegalStackSpecError("on rule per item when using rules within lists")
+            key, value = item.items()[0]
+            expr = parse_expression(key)
+            if not expr:
+                result.append((None, item))
+            else:
+                result.append((expr, parse_list_with_rules(value)))
+        else:
+            result.append((None, item))
+    return result
+
+def evaluate_dict_with_rules(rules, cfg, attrs=None):
+    """Evaluates the rules given variables in `cfg` to produce a resulting dict
 
     We evaluate in the tree-form provided by the user, since this allows
     for some cut-offs (and finding an optimal tree-form for the expressions
@@ -85,32 +127,37 @@ def evaluate_rules(rules, cfg, attrs=None):
     if attrs is None:
         attrs = {}
     for rule in rules:
-        if type(rule) is tuple:
-            expr, children = rule
-            if expr.satisfied_by(cfg):
-                evaluate_rules(children, cfg, attrs)
-        else:
-            action = rule
+        expr, arg = rule
+        if expr is None:
+            action = arg
             action.apply(attrs)
+        elif expr.satisfied_by(cfg):
+            children = arg
+            assert isinstance(children, list)
+            evaluate_dict_with_rules(children, cfg, attrs)
     return attrs
             
+def evaluate_list_with_rules(rules, cfg, out_list=None):
+    """Evaluates the rules given variables in `cfg` to produce a resulting list
 
+    Parameters
+    ----------
 
-def parse_rules_doc(doc):
-    """Given the YAML-parsed strings, to the extra-interpretation of rules and actions
-
-    Results in a new document with the same rule nesting structure, but with
-    strings replaced with AST nodes
+    rules : list
+        Syntax tree in format emitted by `parse_rules_doc`
     """
-    result = []
-    for key, value in doc.items():
-        expr = parse_expression(key)
-        if expr:
-            result.append((expr, parse_rules_doc(value)))
-        else:
-            attrname, action = parse_action(key, value)
-            result.append(action)
-    return result
+    if out_list is None:
+        out_list = []
+    for rule in rules:
+        expr, arg = rule
+        if expr is None:
+            out_list.append(arg)
+        elif expr.satisfied_by(cfg):
+            children = arg
+            assert isinstance(children, list)
+            evaluate_list_with_rules(children, cfg, out_list)
+    return out_list
+
 
 def recursive_load(filename, encountered=None):
     """
