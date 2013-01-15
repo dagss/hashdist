@@ -173,21 +173,6 @@ def test_notimplemented_redirection(tempdir, sc, build_store, cfg):
         logger = MemoryLogger()
         run_job.run_job(logger, build_store, job_spec, {}, {}, tempdir, cfg)
 
-def test_substitute():
-    env = {"A": "a", "B": "b"}
-    def check(want, x):
-        eq_(want, run_job.substitute(x, env))
-    def check_raises(x):
-        with assert_raises(KeyError):
-            run_job.substitute(x, env)
-    yield check, "ab", "$A$B"
-    yield check, "ax", "${A}x"
-    yield check, "\\", "\\"
-    yield check, "\\\\", "\\\\"
-    yield check, "a$${x}", "${A}\$\${x}"
-    yield check_raises, "$Ax"
-    yield check_raises, "$$"
-
 def test_stable_topological_sort():
     def check(expected, problem):
         # pack simpler problem description into objects

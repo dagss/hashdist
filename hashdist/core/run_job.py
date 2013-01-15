@@ -244,7 +244,6 @@ from os.path import join as pjoin
 import shutil
 import subprocess
 from glob import glob
-from string import Template
 from pprint import pformat
 import tempfile
 import errno
@@ -255,6 +254,7 @@ import json
 from ..hdist_logging import CRITICAL, ERROR, WARNING, INFO, DEBUG
 
 from .common import working_directory
+from .utils import substitute
 
 LOG_PIPE_BUFSIZE = 4096
 
@@ -340,20 +340,6 @@ def canonicalize_job_spec(job_spec):
     result.setdefault("script", [])
     return result
     
-def substitute(x, env):
-    """
-    Substitute environment variable into a string following the rules
-    documented above.
-
-    Raises KeyError if an unreferenced variable is not present in env
-    (``$$`` always raises KeyError)
-    """
-    if '$$' in x:
-        # it's the escape character of string.Template, hence the special case
-        raise KeyError('$$ is not allowed (no variable can be named $): %s' % x)
-    x = x.replace(r'\$', '$$')
-    return Template(x).substitute(env)
-
 def get_imports_env(build_store, virtuals, imports):
     """
     Sets up environment variables given by the 'import' section
