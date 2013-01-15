@@ -1,17 +1,23 @@
-from .recipes import Recipe, hdist_tool
+from .recipes import Recipe
 
 class NonhashedHostPrograms(Recipe):
-    def __init__(self, name, programs_and_prefixes=None):
-        Recipe.__init__(self, name, "host",
-                        hdist=hdist_tool,
-                        is_virtual=True)
-        self.programs_and_prefixes = programs_and_prefixes
+    """
+    Parameters
+    ----------
+
+    programs : dict
+       Maps `prefix` to list of programs (by basename to be found in $prefix/bin) to symlink
+    """
+    def __init__(self, **attrs):
+        Recipe.__init__(self, is_virtual=True, **attrs)
 
     def get_parameters(self):
         rules = []
-        for program, prefix in sorted(self.programs_and_prefixes):
+        for prefix, program_lst in sorted(self.programs.items()):
+            if prefix[-1] != '/':
+                prefix += '/'
             rules.append({"action": "symlink",
-                          "select": program,
+                          "select": ['%sbin/%s' % (prefix, p) for p in sorted(program_lst)],
                           "prefix": prefix,
                           "target": "$ARTIFACT"})
         return {"links": rules}
@@ -49,22 +55,16 @@ unix_programs_usr_bin = (
 
 class NonhashedUnix(NonhashedHostPrograms):
     def __init__(self):
-        links = []
-        for prog in unix_programs_bin:
-            links.append(('/bin/%s' % prog, '/'))
-        for prog in unix_programs_usr_bin:
-            links.append(('/usr/bin/%s' % prog, '/usr'))
-        NonhashedHostPrograms.__init__(self, "unix", links)
+        programs = {'/': unix_programs_bin, '/usr': unix_programs_usr_bin}
+        NonhashedHostPrograms.__init__(self, package="unix", programs=programs)
 
 gcc_stack_programs = (
     "addr2line ar strings readelf size gprof objcopy ld.gold c++filt ld.bfd as objdump"
     "nm elfedit strip ranlib ld gold gcc g++ cc"
     ).split()
 
-class NonhashedGCCStack(NonhashedHostPrograms):
+class NonhashedGccToolchain(NonhashedHostPrograms):
     def __init__(self):
-        links = []
-        for prog in gcc_stack_programs:
-            links.append(('/usr/bin/%s' % prog, '/usr'))
-        NonhashedHostPrograms.__init__(self, "gcc-stack", links)
+        programs = {'/usr': gcc_stack_programs}
+        NonhashedHostPrograms.__init__(self, package="gcc-stack", programs=programs)
 
