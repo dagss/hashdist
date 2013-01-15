@@ -50,7 +50,7 @@ class Recipe(object):
         attrs.setdefault('in_profile', not attrs['is_virtual'])
         attrs.setdefault('download', None)
         attrs.setdefault('git_repo', None)
-        attrs.setdefault('source', None)
+        attrs.setdefault('sources', None)
         self.__dict__.update(attrs)
         self._is_initialized = False
         self._build_spec = None
@@ -155,9 +155,9 @@ class Recipe(object):
 
     def fetch_sources(self, source_cache):
         if self.download:
-            source_cache.fetch(self.download, self.source)
+            source_cache.fetch(self.download, self.sources)
         if self.git_repo:
-            source_cache.fetch(self.git_repo, self.source)
+            source_cache.fetch(self.git_repo, self.sources)
 
     def format_tree(self, build_store=None, use_colors=True):
         lines = []
@@ -216,9 +216,9 @@ class Recipe(object):
         
         doc = dict(name=self.package,
                    version=self.version,
-                   sources=[dict(key=self.source,
+                   sources=[dict(key=self.sources,
                                  strip=1 if self.source.startswith('tar') else 0,
-                                 target='.')] if self.source else [],
+                                 target='.')] if self.sources else [],
                    files=files,
                    parameters=parameters,
                    build=build)

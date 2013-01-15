@@ -1,0 +1,17 @@
+build:
+  package=szip:
+    github-repo: erdc-cm/szip
+    version=2.1:
+      sources: git:87863577a4656d5414b0d598c91fed1dd227f74a
+
+  package=zlib:
+    debian: zlib1g-dev
+    download: http://downloads.sourceforge.net/project/libpng/zlib/$version/zlib-$version.tar.gz
+    version=1.2.7:
+      sources: tar.gz:7kojzbry564mxdxv4toviu7ekv2r4hct
+  
+  package=hdf5:
+    debian: hdf5
+    download: http://www.hdfgroup.org/ftp/HDF5/current/src/hdf5-$version.tar.bz2
+    version=1.8.10:
+      sources: tar.bz2:7jxgwn5xs5xnvsdaomvypridodr35or2

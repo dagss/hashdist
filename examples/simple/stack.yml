@@ -1,0 +1,18 @@
+include:
+  - sources
+
+build:
+  set-cflags-ldflags: yes
+  recipe: configure-make-install
+
+  package=hdf5:
+    configure-flags: [--with-szlib, --with-pic]
+
+
+profiles:
+  default:
+    zlib:
+      version: 1.2.7
+
+#  szip: any
+#  hdf5: any
