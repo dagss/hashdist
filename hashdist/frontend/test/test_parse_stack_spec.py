@@ -54,30 +54,37 @@ def test_parse_list_with_rules():
 
 
 def test_evaluate_dict_with_rules():
-    rules = parse_dict_with_rules(yaml.safe_load('''
-    project=foo:
+    # simplest case
+    rules = parse_dict_rules(yaml.safe_load('''
+    package=foo:
         version=1.1:
             a: 1
         b: 2
     z: 4
     '''))
 
-    assert dict(b=2, z=4) == evaluate_dict_with_rules(rules, dict(project='foo'))
-    assert dict(a=1, b=2, z=4) == evaluate_dict_with_rules(rules, dict(project='foo', version='1.1'))
-    assert dict(z=4) == evaluate_dict_with_rules(rules, {})
+    eq_(dict(b=2, z=4),
+        evaluate_dict_with_rules(rules, dict(package='foo')))
+    eq_(dict(a=1, b=2, z=4),
+        evaluate_dict_with_rules(rules, dict(package='foo', version='1.1')))
+    eq_(dict(z=4),
+        evaluate_dict_with_rules(rules, {}))
 
-    # conflicting settings
-    rules = parse_dict_with_rules(yaml.safe_load('''
+    # more specific overrides
+    rules = parse_dict_rules(yaml.safe_load('''
     a: 1
-    project=foo:
-        a: 1
+    package=foo:
+      a: 2
+      version=2.0:
+        a: 3
+    version=1.0:
+      a: 4
     '''))
-    try:
-        evaluate_dict_with_rules(rules, {})
-    except IllegalStackSpecError:
-        assert False
-    with assert_raises(IllegalStackSpecError):
-        evaluate_dict_with_rules(rules, dict(project='foo'))
+    eq_(dict(a=1), evaluate_dict_with_rules(rules, {}))
+    eq_(dict(a=2), evaluate_dict_with_rules(rules, dict(package='foo')))
+    eq_(dict(a=3), evaluate_dict_with_rules(rules, dict(package='foo', version='2.0')))
+    with assert_raises(ConditionsNotNested):
+        evaluate_dict_with_rules(rules, dict(package='foo', version='1.0'))
     
 def test_evaluate_list_with_rules():
     rules = parse_list_with_rules(yaml.safe_load('''
@@ -109,9 +116,9 @@ def test_parse_dict_rules():
     c: 4
     ''')
     t = parse_dict_rules(doc)
-    eq_({'a': Select((True, 3), (Match('project', 'foo') | Match('version', 'bar'), 1)),
+    eq_({'a': Select((TrueCondition(), 3), (Match('project', 'foo') & Match('version', 'bar'), 1)),
          'b': Select((Match('project', 'foo'), 2)),
-         'c': Select((True, 4))},
+         'c': Select((TrueCondition(), 4))},
         t)
 
 def test_parse_list_rules():
@@ -129,10 +136,10 @@ def test_parse_list_rules():
       c: d
     ''')
     t = parse_list_rules(doc)
-    eq_(t, [Extend(True, ['a', 'a']),
-            Extend(Match('package', 'foo') | Match('version', 'bar'), ['a', 'b']),
+    eq_(t, [Extend(TrueCondition(), ['a', 'a']),
+            Extend(Match('package', 'foo') & Match('version', 'bar'), ['a', 'b']),
             Extend(Match('package', 'foo'), ['b']),
-            Extend(True, ['a', 'c'])])
+            Extend(TrueCondition(), ['a', 'c'])])
     
 
 def test_include():

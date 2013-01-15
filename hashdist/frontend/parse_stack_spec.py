@@ -1,12 +1,18 @@
 import os
 from os.path import join as pjoin
+
 from ..deps import yaml
 
 class IllegalStackSpecError(Exception):
     pass
 
+class ConditionsNotNested(IllegalStackSpecError):
+    pass
 
 class AstNode(object):
+    def __hash__(self):
+        return hash(self.tuple)
+
     def __eq__(self, other):
         if not isinstance(other, AstNode):
             return False
@@ -44,31 +50,50 @@ class Select(AstNode):
     def __repr__(self):
         return 'Select(%s)' % (', '.join(repr(x) for x in self.options))
 
+    def is_always_true(self):
+        return all(tup[0] is True for tup in self.options)
+
 class Condition(AstNode):
-    def __or__(self, other):
-        if other is True:
+    def __and__(self, other):
+        if type(self) is TrueCondition:
+            return other
+        elif type(other) is TrueCondition:
             return self
         elif not isinstance(other, Condition):
             raise TypeError()
         else:
-            return Or([self, other])
+            return And([self, other])
 
-    def __ror__(self, other):
-        return self.__or__(other)
+    def __rand__(self, other):
+        return self.__and__(other)
 
-class Or(Condition):
+class TrueCondition(Condition):
+    def __init__(self):
+        self.tuple = (TrueCondition,)
+
+    def satisfied_by(self, cfg):
+        return True
+true_condition = TrueCondition()
+
+class And(Condition):
     def __init__(self, children):
-        # Always turn Or(Or([a], [b]), [c]) to Or([a, b, c])
+        # Always turn And(And([a], [b]), [c]) to And([a, b, c])
         def flatten(x):
-            if type(x) is Or:
+            if type(x) is And:
                 return x.children
             else:
                 return [x]
         self.children = children = sum([flatten(x) for x in children], [])
-        self.tuple = (Or, children)
+        self.tuple = (And, children)
 
     def __repr__(self):
-        return ' | '.join(repr(x) for x in self.children)
+        if len(self.children) <= 1:
+            return 'And(%s)' % repr(self.children)
+        else:
+            return ' & '.join(repr(x) for x in self.children)
+
+    def satisfied_by(self, cfg):
+        return all(x.satisfied_by(cfg) for x in self.children)
 
 class Match(Condition):
     """AST node for "varname=value" matchers
@@ -177,32 +202,6 @@ def parse_list_with_rules(doc):
             result.append((None, item))
     return result
 
-def evaluate_dict_with_rules(rules, cfg, attrs=None):
-    """Evaluates the rules given variables in `cfg` to produce a resulting dict
-
-    We evaluate in the tree-form provided by the user, since this allows
-    for some cut-offs (and finding an optimal tree-form for the expressions
-    seems very overkill).
-
-    Parameters
-    ----------
-
-    rules : list
-        Syntax tree in format emitted by `parse_rules_doc`
-    """
-    if attrs is None:
-        attrs = {}
-    for rule in rules:
-        expr, arg = rule
-        if expr is None:
-            action = arg
-            action.apply(attrs)
-        elif expr.satisfied_by(cfg):
-            children = arg
-            assert isinstance(children, list)
-            evaluate_dict_with_rules(children, cfg, attrs)
-    return attrs
-            
 def evaluate_list_with_rules(rules, cfg, out_list=None):
     """Evaluates the rules given variables in `cfg` to produce a resulting list
 
@@ -224,7 +223,7 @@ def evaluate_list_with_rules(rules, cfg, out_list=None):
             evaluate_list_with_rules(children, cfg, out_list)
     return out_list
 
-def parse_list_rules(doc, parent_condition=True, result=None):
+def parse_list_rules(doc, parent_condition=true_condition, result=None):
     result = result if result is not None else []
     buffer = []
     def emit_buffer():
@@ -242,7 +241,7 @@ def parse_list_rules(doc, parent_condition=True, result=None):
                 key, value = item.items()[0]
                 cond = parse_condition(key)
                 if cond:
-                    parse_list_rules(value, parent_condition | cond, result)
+                    parse_list_rules(value, parent_condition & cond, result)
                 else:
                     raise IllegalStackSpecError('dict within list not currently supported/needed')
             else:
@@ -257,7 +256,7 @@ def parse_list_rules(doc, parent_condition=True, result=None):
     emit_buffer()
     return result
 
-def parse_dict_rules(doc, parent_condition=True):
+def parse_dict_rules(doc, parent_condition=true_condition):
     """Turns a tree of conditions/selectors and attribute actions into a list
 
     Turns::
@@ -282,13 +281,71 @@ def parse_dict_rules(doc, parent_condition=True):
         value = doc[key]
         cond = parse_condition(key)
         if cond:
-            for merge_key, merge_select in parse_dict_rules(value, parent_condition | cond).items():
+            for merge_key, merge_select in parse_dict_rules(value, parent_condition & cond).items():
                 result[merge_key] = result.get(merge_key, None) + merge_select
         elif isinstance(value, dict):
             raise IllegalStackSpecError('nested dicts not currently supported/needed')
         else:
-            select = Select((parent_condition, value))
-            result[key] = select + result.get(key, None)
+            select = Select((parent_condition, value)) + result.get(key, None)
+            result[key] = select
+    return result
+
+def evaluate_rules(rules, cfg):
+    if isinstance(rules, list):
+        return evaluate_list_rules(rules, cfg)
+    elif isinstance(rules, dict):
+        return evaluate_dict_rules(rules, cfg)
+    else:
+        raise TypeError()
+
+def select_option(options):
+    """Which options out of multiple possible to pick?
+
+    The rule is to a) ensure that all conditions are nested within one
+    another, b) pick the most specific one.
+
+    May raise ConditionsNotNested.
+
+    Returns
+    -------
+
+    option: (Condition, object)
+        Selected option from input list
+
+    """
+    def cond_children(cond):
+        if type(cond) is And:
+            return cond.children
+        else:
+            return [cond]
+
+    if len(options) == 1:
+        return options[0]
+
+    # TrueCondition is least specific
+    options = [(cond, val) for cond, val in options if type(cond) is not TrueCondition]
+    if len(options) == 0:
+        raise ConditionsNotNested("only TrueCondition present, cannot discriminate")
+
+    options.sort(key=lambda option: len(cond_children(option[0])))
+    for i in range(len(options) - 1):
+        child_cond = options[i][0]
+        parent_cond = options[i + 1][0]
+        if set(cond_children(child_cond)).difference(cond_children(parent_cond)):
+            raise ConditionsNotNested('%r not nested in %r' % (child_cond, parent_cond))
+    # OK, they're all nested, select the last (most specific) one
+    return options[-1]
+
+def evaluate_dict_with_rules(rules, cfg):
+    result = {}
+    for key, select in rules.items():
+        assert type(select) is Select
+        # filter for options satisfied by cfg
+        options = [(cond, value) for cond, value in select.options
+                   if cond.satisfied_by(cfg)]
+        if len(options) > 0:
+            option = select_option(options)
+            result[key] = option[1]
     return result
 
 class TreeStackSpec(object):
