@@ -42,34 +42,45 @@ class Recipe(object):
     """
 
     
-    def __init__(self, name, version, source_fetches=(), dependencies=None,
-                 env=None, is_virtual=False, in_profile=True, **kw):
-        self.name = name
-        self.version = version
-        self.source_fetches = source_fetches
-        self.is_virtual = is_virtual
-        if is_virtual:
-            in_profile = False
-        self.in_profile = in_profile
-
-        dependencies = dict(dependencies) if dependencies is not None else {}
-        env = dict(env) if env is not None else {}
-
-        # parse kw to mean dependency if Recipe, or env entry otherwise
-        for key, value in kw.iteritems():
-            if isinstance(value, Recipe):
-                dependencies[key] = value
-            elif isinstance(value, (str, int, float)):
-                env[key] = value
-            else:
-                raise TypeError('Meaning of passing argument %s of type %r not understood' %
-                                (key, type(value)))
-
-
-        self.dependencies = dependencies
-        self.env = env
+    def __init__(self, **attrs):
+        attrs = dict(attrs)
+        attrs.setdefault('version', 'n')
+        attrs.setdefault('build_deps', {})
+        attrs.setdefault('is_virtual', False)
+        attrs.setdefault('in_profile', not attrs['is_virtual'])
+        attrs.setdefault('download', None)
+        attrs.setdefault('git_repo', None)
+        attrs.setdefault('source', None)
+        self.__dict__.update(attrs)
+        self._is_initialized = False
         self._build_spec = None
-        self.is_initialized = False
+
+        ## self.name = name
+        ## self.version = version
+        ## self.source_fetches = source_fetches
+        ## self.is_virtual = is_virtual
+        ## if is_virtual:
+        ##     in_profile = False
+        ## self.in_profile = in_profile
+
+        ## dependencies = dict(dependencies) if dependencies is not None else {}
+        ## env = dict(env) if env is not None else {}
+
+        ## # parse kw to mean dependency if Recipe, or env entry otherwise
+        ## for key, value in kw.iteritems():
+        ##     if isinstance(value, Recipe):
+        ##         dependencies[key] = value
+        ##     elif isinstance(value, (str, int, float)):
+        ##         env[key] = value
+        ##     else:
+        ##         raise TypeError('Meaning of passing argument %s of type %r not understood' %
+        ##                         (key, type(value)))
+
+
+        ## self.dependencies = dependencies
+        ## self.env = env
+        ## self._build_spec = None
+        ## self.is_initialized = False
 
     def initialize(self, logger, cache):
         """Initializes the object and its dependencies.
@@ -85,9 +96,9 @@ class Recipe(object):
         constructor). This method is free to modify any attribute, including
         dependencies.
 
-        Existing entries in ``self.dependencies`` (passed to the constructor)
+        Existing entries in ``self.build_deps`` (passed to the constructor)
         will have initialize() called prior to ``self`` being constructed.
-        Any new entries added to ``self.dependencies`` should already
+        Any new entries added to ``self.build_deps`` should already
         have been initialized.
 
         After calling this method, ``self`` is considered immutable.
@@ -105,12 +116,12 @@ class Recipe(object):
             See :mod:`hashdist.core.cache`. The recipe should not hold on to
             this after initialization.
         """
-        if self.is_initialized:
+        if self._is_initialized:
             return
-        for dep_name, dep in self.dependencies.iteritems():
+        for dep_name, dep in self.build_deps.iteritems():
             dep.initialize(logger, cache)
         self._initialize(logger, cache)
-        self.is_initialized = True
+        self._is_initialized = True
 
     def get_build_spec(self):
         """
@@ -128,7 +139,7 @@ class Recipe(object):
 
     def get_artifact_id(self):
         if self.is_virtual:
-            return 'virtual:%s/%s' % (self.name, self.version)
+            return 'virtual:%s/%s' % (self.package, self.version)
         else:
             return self.get_real_artifact_id()
 
@@ -143,8 +154,10 @@ class Recipe(object):
             return short_real
 
     def fetch_sources(self, source_cache):
-        for fetch in self.source_fetches:
-            fetch.fetch_into(source_cache)
+        if self.download:
+            source_cache.fetch(self.download, self.source)
+        if self.git_repo:
+            source_cache.fetch(self.git_repo, self.source)
 
     def format_tree(self, build_store=None, use_colors=True):
         lines = []
@@ -179,7 +192,7 @@ class Recipe(object):
         
         # bin all repeated artifacts on their own line
         repeated = []
-        for dep_name, dep in sorted(self.dependencies.items()):
+        for dep_name, dep in sorted(self.build_deps.items()):
             if dep.get_real_artifact_id() in visited:
                 repeated.append(dep.get_display_name())
             else:
@@ -192,10 +205,6 @@ class Recipe(object):
         return '<Recipe for %s>' % self.get_artifact_id()
 
     def _assemble_build_spec(self):
-        sources = []
-        for fetch in self.source_fetches:
-            sources.append(fetch.get_spec())
-
         dep_specs = self.get_dependencies_spec()
 
         commands = self.get_commands()
@@ -205,9 +214,11 @@ class Recipe(object):
 
         build = {"script": commands, "import": dep_specs, "env": env}
         
-        doc = dict(name=self.name,
+        doc = dict(name=self.package,
                    version=self.version,
-                   sources=sources,
+                   sources=[dict(key=self.source,
+                                 strip=1 if self.source.startswith('tar') else 0,
+                                 target='.')] if self.source else [],
                    files=files,
                    parameters=parameters,
                    build=build)
@@ -224,9 +235,8 @@ class Recipe(object):
         dependencies_ids = [dep.get_artifact_id() for dep in all_dependencies.values()]
         for dep_name, dep in all_dependencies.iteritems():
             dep_id = dep.get_artifact_id()
-            before_ids = [b.get_artifact_id() for b in dep.dependencies.values()]
-            dep_specs.append({"ref": dep_name, "id": dep_id, "in_path": True,
-                              "in_hdist_compiler_paths": True,
+            before_ids = [b.get_artifact_id() for b in dep.build_deps.values()]
+            dep_specs.append({"ref": dep_name, "id": dep_id, "in_env": True,
                               "before": before_ids})
         return dep_specs
     
@@ -247,7 +257,7 @@ def get_total_dependencies(recipe, result=None):
     """
     if result is None:
         result = {}
-    for dep_name, dep in recipe.dependencies.iteritems():
+    for dep_name, dep in recipe.build_deps.iteritems():
         if dep_name in result:
             if dep is not result[dep_name]:
                 raise ValueError("two recipes with the same name conflicting")
@@ -264,16 +274,16 @@ def find_dependency_in_spec(spec, ref):
         if item['ref'] == ref:
             return item
 
-class HdistTool(Recipe):
-    def __init__(self):
-        Recipe.__init__(self, core.HDIST_CLI_ARTIFACT_NAME, core.HDIST_CLI_ARTIFACT_VERSION,
-                        is_virtual=True)
+## class HdistTool(Recipe):
+##     def __init__(self):
+##         Recipe.__init__(self, core.HDIST_CLI_ARTIFACT_NAME, core.HDIST_CLI_ARTIFACT_VERSION,
+##                         is_virtual=True)
 
-    def _assemble_build_spec(self):
-        return core.hdist_cli_build_spec()
+##     def _assemble_build_spec(self):
+##         return core.hdist_cli_build_spec()
 
-hdist_tool = HdistTool()
-HDIST_TOOL_VIRTUAL = 'virtual:%s/%s' % (core.HDIST_CLI_ARTIFACT_NAME, core.HDIST_CLI_ARTIFACT_VERSION)
+## hdist_tool = HdistTool()
+## HDIST_TOOL_VIRTUAL = 'virtual:%s/%s' % (core.HDIST_CLI_ARTIFACT_NAME, core.HDIST_CLI_ARTIFACT_VERSION)
 
 
 def build_recipes(build_store, source_cache, config, recipes, **kw):
@@ -281,7 +291,7 @@ def build_recipes(build_store, source_cache, config, recipes, **kw):
     virtuals = {} # virtual_name -> artifact_id
 
     def _depth_first_build(recipe):
-        for dep_name, dep_pkg in recipe.dependencies.iteritems():
+        for dep_name, dep_pkg in recipe.build_deps.iteritems():
             # recurse
             _depth_first_build(dep_pkg)
 
