@@ -1,5 +1,6 @@
 import os
 from os.path import join as pjoin
+from functools import total_ordering
 
 from ..deps import yaml
 
@@ -34,6 +35,15 @@ class Select(AstNode):
             else:
                 return [x]
         self.options = options = sum([flatten(x) for x in options], [])
+        # need to sort list of options by their conditions to make sure __eq__
+        # works reliably
+        options.sort()
+        # if conditions are equal, we don't have a canonical order -- but then
+        # we are guaranteed to have an error on evaluation anyway, so may
+        # as well err now
+        for i in range(len(options) - 1):
+            if options[i][0] == options[i + 1][0]:
+                raise IllegalStackSpecError("duplicate keys")
         self.tuple = (Select, options)
 
     def __add__(self, other):
@@ -53,7 +63,14 @@ class Select(AstNode):
     def is_always_true(self):
         return all(tup[0] is True for tup in self.options)
 
+@total_ordering
 class Condition(AstNode):
+    def __lt__(self, other):
+        if type(self) != type(other):
+            return type(self).__name__ < type(other).__name__
+        else:
+            return self._lt_same_type(other)
+    
     def __and__(self, other):
         if type(self) is TrueCondition:
             return other
@@ -73,6 +90,10 @@ class TrueCondition(Condition):
 
     def satisfied_by(self, cfg):
         return True
+
+    def _lt_same_type(self, other):
+        return False
+
 true_condition = TrueCondition()
 
 class And(Condition):
@@ -84,6 +105,8 @@ class And(Condition):
             else:
                 return [x]
         self.children = children = sum([flatten(x) for x in children], [])
+        # Keep children sorted to make __eq__ work reliably
+        children.sort()
         self.tuple = (And, children)
 
     def __repr__(self):
@@ -95,6 +118,10 @@ class And(Condition):
     def satisfied_by(self, cfg):
         return all(x.satisfied_by(cfg) for x in self.children)
 
+    def _lt_same_type(self, other):
+        # list comparison will do fine, since lists should be sorted
+        return self.children < other.children
+
 class Match(Condition):
     """AST node for "varname=value" matchers
     """
@@ -105,6 +132,9 @@ class Match(Condition):
 
     def satisfied_by(self, cfg):
         return (self.varname in cfg and cfg[self.varname] == self.value)
+
+    def _lt_same_type(self, other):
+        return (self.varname, self.value) < (other.varname, other.value)
 
 class Assign(AstNode):
     """AST node for "attrname: value" and "assign attrname: value"
@@ -195,6 +225,27 @@ def parse_list_with_conditions(doc, parent_condition=true_condition, result=None
     emit_buffer()
     return result
 
+def merge_parsed_dicts(a, b):
+    result = {}
+    for key, a_value in a.items():
+        if key not in b:
+            result[key] = a_value
+        else:
+            b_value = b[key]
+            if isinstance(a_value, dict):
+                if not isinstance(b_value, dict):
+                    raise IllegalStackSpecError('cannot merge a value with a dict')
+                result[key] = merge_parsed_dicts(a_value, b_value)
+            else:
+                if not (isinstance(a_value, Select) and isinstance(b_value, Select)):
+                    raise TypeError('unexpected type in parsed dicts: %r, %r' %
+                                    (type(a_value), type(b_value)))
+                result[key] = a_value + b_value
+    for key, b_value in b.items():
+        if key not in a:
+            result[key] = b_value
+    return result
+
 def parse_dict_with_conditions(doc, parent_condition=true_condition):
     """Turns a tree of conditions/selectors and attribute actions into a list
 
@@ -223,10 +274,9 @@ def parse_dict_with_conditions(doc, parent_condition=true_condition):
             if not isinstance(value, dict):
                 raise IllegalStackSpecError('child of condition "%s" not a dict' % cond)
             recurse_result = parse_dict_with_conditions(value, parent_condition & cond)
-            for merge_key, merge_select in recurse_result.items():
-                result[merge_key] = result.get(merge_key, None) + merge_select
+            result = merge_parsed_dicts(result, recurse_result)
         elif isinstance(value, dict):
-            raise IllegalStackSpecError('nested dicts not currently supported/needed')
+            result[key] = parse_dict_with_conditions(value, parent_condition)
         else:
             select = Select((parent_condition, value)) + result.get(key, None)
             result[key] = select
@@ -272,14 +322,19 @@ def select_option(options):
 
 def evaluate_dict_with_conditions(rules, cfg):
     result = {}
-    for key, select in rules.items():
-        assert type(select) is Select
-        # filter for options satisfied by cfg
-        options = [(cond, value) for cond, value in select.options
-                   if cond.satisfied_by(cfg)]
-        if len(options) > 0:
-            option = select_option(options)
-            result[key] = option[1]
+    for key, value in rules.items():
+        if isinstance(value, Select):
+            select = value
+            # filter for options satisfied by cfg
+            options = [(cond, value) for cond, value in select.options
+                       if cond.satisfied_by(cfg)]
+            if len(options) > 0:
+                cond, value = select_option(options)
+                result[key] = value
+        else:
+            value = evaluate_dict_with_conditions(value, cfg)
+            if len(value) > 0:
+                result[key] = value
     return result
 
 def evaluate_list_with_conditions(rules, cfg):
@@ -314,17 +369,8 @@ def parse_stack_spec(filename, encountered=None, parent_condition=true_condition
         del doc['include']
     else:
         include_section = []
-    
-    # two-level dicts explicitly; should probably extend to n-level
-    # inside of parse_dict_with_conditions in time
-    result = {}
-    for section, section_doc in doc.items():
-        if not isinstance(section_doc, dict):
-            raise IllegalStackSpecError('%s section should be a dict' % value)
-        result[section] = parse_dict_with_conditions(section_doc, parent_condition)
 
-    # merge in included sections (easier to do this last, and order should not matter
-    # by definition)
+    result = {}
     include_list = parse_list_with_conditions(include_section)
     for segment in include_list:
         assert type(segment) is Extend
@@ -333,13 +379,8 @@ def parse_stack_spec(filename, encountered=None, parent_condition=true_condition
             included_doc = parse_stack_spec(resolve_included_file(basename),
                                             encountered,
                                             child_cond)
-            for section, section_doc in included_doc.items():
-                section_result = result.setdefault(section, {})
-                
-                for key, value in section_doc.items():
-                    if key in section_result:
-                        section_result[key] = section_result.get(key, None) + value
-                    else:
-                        section_result[key] = value
+            result = merge_parsed_dicts(result, included_doc)
 
+    result = merge_parsed_dicts(result,
+                                parse_dict_with_conditions(doc, parent_condition))
     return result
