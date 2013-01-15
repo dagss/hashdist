@@ -196,7 +196,7 @@ from .common import (InvalidBuildSpecError, BuildFailedError,
 from .fileutils import silent_unlink, rmtree_up_to, silent_makedirs, gzip_compress
 from . import run_job
 
-
+from ..deps import yaml
 
 class BuildSpec(object):
     """Wraps the document corresponding to a build.json
@@ -541,6 +541,8 @@ class ArtifactBuilder(object):
         with file(pjoin(d, 'build.json'), 'w') as f:
             json.dump(self.build_spec.doc, f, **json_formatting_options)
             f.write('\n')
+        with file(pjoin(d, 'build.yml'), 'w') as f:
+            yaml.dump(self.build_spec.doc, f)
 
     def run_build_commands(self, build_dir, artifact_dir, env, config):
         artifact_display_name = self.build_spec.digest[:SHORT_ARTIFACT_ID_LEN] + '..'

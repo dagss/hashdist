@@ -117,7 +117,7 @@ def test_basic(tempdir, sc, bldr, config):
     assert not bldr.is_present(spec)
     name, path = bldr.ensure_present(spec, config)
     assert bldr.is_present(spec)
-    assert ['bar', 'build.json', 'build.log.gz', 'hello'] == sorted(os.listdir(path))
+    assert ['bar', 'build.json', 'build.log.gz', 'build.yml', 'hello'] == sorted(os.listdir(path))
     with file(pjoin(path, 'hello')) as f:
         got = sorted(f.readlines())
         assert ''.join(got) == dedent('''\
@@ -125,6 +125,7 @@ def test_basic(tempdir, sc, bldr, config):
         ./build.json
         ./build.log
         ./build.sh
+        ./build.yml
         ./subdir
         ./subdir/build.sh
         ''')
