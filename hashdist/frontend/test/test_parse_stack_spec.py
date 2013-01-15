@@ -1,12 +1,14 @@
 from ...deps import yaml
 
 from nose.tools import eq_, ok_, assert_raises
+from nose import SkipTest
 from .. import parse_stack_spec
 from ..parse_stack_spec import *
 from pprint import pprint
 from textwrap import dedent
 
 from ...core.test.utils import temp_dir
+
 
 def cat(filename, contents):
     with open(filename, 'w') as f:
@@ -96,7 +98,45 @@ def test_evaluate_list_with_rules():
     eq_(['foo'],
         evaluate_list_with_rules(rules, dict(project='baz')))
     
+
+def test_parse_dict_rules():
+    doc = yaml.safe_load('''
+    project=foo:
+        version=bar:
+            a: 1
+        b: 2
+    a: 3
+    c: 4
+    ''')
+    t = parse_dict_rules(doc)
+    eq_({'a': Select((True, 3), (Match('project', 'foo') | Match('version', 'bar'), 1)),
+         'b': Select((Match('project', 'foo'), 2)),
+         'c': Select((True, 4))},
+        t)
+
+def test_parse_list_rules():
+    doc = yaml.safe_load('''
+    - a
+    - a
+    - package=foo:
+        - version=bar:
+            - a
+            - b
+        - b
+    - a
+    - c
+    - a: b
+      c: d
+    ''')
+    t = parse_list_rules(doc)
+    eq_(t, [Extend(True, ['a', 'a']),
+            Extend(Match('package', 'foo') | Match('version', 'bar'), ['a', 'b']),
+            Extend(Match('package', 'foo'), ['b']),
+            Extend(True, ['a', 'c'])])
+    
+
 def test_include():
+    raise SkipTest()
     with temp_dir() as d:
         cat(pjoin(d, 'stack.yml'), '''\
         include:

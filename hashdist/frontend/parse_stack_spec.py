@@ -8,16 +8,69 @@ class IllegalStackSpecError(Exception):
 
 class AstNode(object):
     def __eq__(self, other):
+        if not isinstance(other, AstNode):
+            return False
         return self.tuple == other.tuple
 
     def __ne__(self, other):
         return not self == other
 
     def __repr__(self):
-        cls, args = self.tuple[0], self.tuple[1:]
-        return '%s(%s)' % (cls.__name__, ', '.join('%r' % arg for arg in args))
+        cls = self.tuple[0]
+        return '%s(%s)' % (cls.__name__, ', '.join(repr(arg) for arg in self.tuple[1:]))
 
-class Match(AstNode):
+class Select(AstNode):
+    def __init__(self, *options):
+        # Always turn Select(Selection([a], [b]), [c]) to Select([a, b, c])
+        def flatten(x):
+            if type(x) is Select:
+                return x.options
+            else:
+                return [x]
+        self.options = options = sum([flatten(x) for x in options], [])
+        self.tuple = (Select, options)
+
+    def __add__(self, other):
+        if other is None:
+            return self
+        elif not type(other) is Select:
+            raise TypeError()
+        else:
+            return Select(*(self.options + other.options))
+
+    def __radd__(self, other):
+        return self.__add__(other)
+
+    def __repr__(self):
+        return 'Select(%s)' % (', '.join(repr(x) for x in self.options))
+
+class Condition(AstNode):
+    def __or__(self, other):
+        if other is True:
+            return self
+        elif not isinstance(other, Condition):
+            raise TypeError()
+        else:
+            return Or([self, other])
+
+    def __ror__(self, other):
+        return self.__or__(other)
+
+class Or(Condition):
+    def __init__(self, children):
+        # Always turn Or(Or([a], [b]), [c]) to Or([a, b, c])
+        def flatten(x):
+            if type(x) is Or:
+                return x.children
+            else:
+                return [x]
+        self.children = children = sum([flatten(x) for x in children], [])
+        self.tuple = (Or, children)
+
+    def __repr__(self):
+        return ' | '.join(repr(x) for x in self.children)
+
+class Match(Condition):
     """AST node for "varname=value" matchers
     """
     def __init__(self, varname, value):
@@ -41,7 +94,20 @@ class Assign(AstNode):
             raise IllegalStackSpecError('"%s" assigned twice' % self.attrname)
         attrs[self.attrname] = self.value
 
-def parse_expression(s):
+class Extend(AstNode):
+    """AST node for appending a list given a condition"""
+    def __init__(self, condition, value_list):
+        self.condition = condition
+        self.value_list = value_list
+        self.tuple = (Extend, condition, value_list)
+
+    def apply(self, obj):
+        if type(obj) is not list:
+            raise TypeError('expected list for Extend action')
+        obj.extend(self.value_list)
+        
+
+def parse_condition(s):
     """Parses a condition expression node, or returns None if the string is not a match expression/
 
     Currently only "varname=value" is supported, but "1.0<=version<1.4" etc.
@@ -79,7 +145,7 @@ def parse_dict_with_rules(doc):
     """
     result = []
     for key, value in doc.items():
-        expr = parse_expression(key)
+        expr = parse_condition(key)
         if expr:
             result.append((expr, parse_dict_with_rules(value)))
         else:
@@ -102,7 +168,7 @@ def parse_list_with_rules(doc):
             if len(item) != 1:
                 raise IllegalStackSpecError("on rule per item when using rules within lists")
             key, value = item.items()[0]
-            expr = parse_expression(key)
+            expr = parse_condition(key)
             if not expr:
                 result.append((None, item))
             else:
@@ -158,7 +224,72 @@ def evaluate_list_with_rules(rules, cfg, out_list=None):
             evaluate_list_with_rules(children, cfg, out_list)
     return out_list
 
+def parse_list_rules(doc, parent_condition=True, result=None):
+    result = result if result is not None else []
+    buffer = []
+    def emit_buffer():
+        # use a buffer to string together items with the same condition
+        if len(buffer):
+            result.append(Extend(parent_condition, list(buffer)))
+        del buffer[:]
 
+    for item in doc:
+        if isinstance(item, dict):
+            # broken up by condition; emit anything currently in buffer
+            emit_buffer()
+            
+            if len(item) == 1:
+                key, value = item.items()[0]
+                cond = parse_condition(key)
+                if cond:
+                    parse_list_rules(value, parent_condition | cond, result)
+                else:
+                    raise IllegalStackSpecError('dict within list not currently supported/needed')
+            else:
+                for key, value in item.items():
+                    if parse_condition(key):
+                        raise IllegalStackSpecError("conditions in list must all be prepended by '-' "
+                                                    "(so that order is preserved)")
+        elif isinstance(item, list):
+            raise IllegalStackSpecError('list within list not currently supported/needed')
+        else:
+            buffer.append(item)
+    emit_buffer()
+    return result
+
+def parse_dict_rules(doc, parent_condition=True):
+    """Turns a tree of conditions/selectors and attribute actions into a list
+
+    Turns::
+
+        project=foo:
+            version=bar:
+                a: 1
+            b: 2
+        a: 3
+        c: 4
+
+    Into::
+
+        {"a": [([Match("project", "foo"), Match("version", "bar")], Assign(1)),
+               ...],
+         ...}
+    """
+    result = {}
+    # traverse in sorted order, just to make unit tests predictable
+    keys = sorted(doc.keys())
+    for key in keys:
+        value = doc[key]
+        cond = parse_condition(key)
+        if cond:
+            for merge_key, merge_select in parse_dict_rules(value, parent_condition | cond).items():
+                result[merge_key] = result.get(merge_key, None) + merge_select
+        elif isinstance(value, dict):
+            raise IllegalStackSpecError('nested dicts not currently supported/needed')
+        else:
+            select = Select((parent_condition, value))
+            result[key] = select + result.get(key, None)
+    return result
 
 class TreeStackSpec(object):
     """
