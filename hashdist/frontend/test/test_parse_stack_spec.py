@@ -14,99 +14,7 @@ def cat(filename, contents):
     with open(filename, 'w') as f:
         f.write(dedent(contents))
 
-def test_parse_dict_with_rules():
-    doc = yaml.safe_load('''
-    project=foo:
-        version=1.1:
-            a: 1
-        b: 2
-    a: 3
-    z: 4
-    ''')
-    t = parse_dict_with_rules(doc)
-    eq_([(None, Assign('a', 3)),
-        (Match('project', 'foo'),
-         [(Match('version', '1.1'), [(None, Assign('a', 1))]),
-          (None, Assign('b', 2))]),
-         (None, Assign('z', 4))],
-        t)
-
-def test_parse_list_with_rules():
-    doc = yaml.safe_load('''
-    - project=foo:
-        - version=1.1:
-          - a: b # dict as list entry
-        - version=1.2:
-          - b
-        - b
-    - z
-    - a: c
-    ''')
-    t = parse_list_with_rules(doc)
-    eq_([(Match('project', 'foo'),
-          [(Match('version', '1.1'), [(None, {'a': 'b'})]),
-           (Match('version', '1.2'), [(None, 'b')]),
-           (None, 'b')]),
-         (None, 'z'),
-         (None, {'a': 'c'})],
-        t)
-
-
-
-def test_evaluate_dict_with_rules():
-    # simplest case
-    rules = parse_dict_rules(yaml.safe_load('''
-    package=foo:
-        version=1.1:
-            a: 1
-        b: 2
-    z: 4
-    '''))
-
-    eq_(dict(b=2, z=4),
-        evaluate_dict_with_rules(rules, dict(package='foo')))
-    eq_(dict(a=1, b=2, z=4),
-        evaluate_dict_with_rules(rules, dict(package='foo', version='1.1')))
-    eq_(dict(z=4),
-        evaluate_dict_with_rules(rules, {}))
-
-    # more specific overrides
-    rules = parse_dict_rules(yaml.safe_load('''
-    a: 1
-    package=foo:
-      a: 2
-      version=2.0:
-        a: 3
-    version=1.0:
-      a: 4
-    '''))
-    eq_(dict(a=1), evaluate_dict_with_rules(rules, {}))
-    eq_(dict(a=2), evaluate_dict_with_rules(rules, dict(package='foo')))
-    eq_(dict(a=3), evaluate_dict_with_rules(rules, dict(package='foo', version='2.0')))
-    with assert_raises(ConditionsNotNested):
-        evaluate_dict_with_rules(rules, dict(package='foo', version='1.0'))
-    
-def test_evaluate_list_with_rules():
-    rules = parse_list_with_rules(yaml.safe_load('''
-    - project=bar:
-      - bar
-    - project=baz:
-      - version=3:
-        - baz
-    - foo
-    - project=bar:
-      - bar
-    '''))
-
-    eq_(['foo'], evaluate_list_with_rules(rules, {}))
-    eq_(['bar', 'foo', 'bar'], evaluate_list_with_rules(rules, dict(project='bar')))
-    eq_(['baz', 'foo'],
-        evaluate_list_with_rules(rules, dict(project='baz', version='3')))
-    eq_(['foo'],
-        evaluate_list_with_rules(rules, dict(project='baz')))
-    
-
-def test_parse_dict_rules():
+def test_parse_dict_with_conditions():
     doc = yaml.safe_load('''
     project=foo:
         version=bar:
@@ -115,13 +23,46 @@ def test_parse_dict_rules():
     a: 3
     c: 4
     ''')
-    t = parse_dict_rules(doc)
+    t = parse_dict_with_conditions(doc)
     eq_({'a': Select((TrueCondition(), 3), (Match('project', 'foo') & Match('version', 'bar'), 1)),
          'b': Select((Match('project', 'foo'), 2)),
          'c': Select((TrueCondition(), 4))},
         t)
 
-def test_parse_list_rules():
+def test_evaluate_dict_with_conditions():
+    # simplest case
+    rules = parse_dict_with_conditions(yaml.safe_load('''
+    package=foo:
+        version=1.1:
+            a: 1
+        b: 2
+    z: 4
+    '''))
+
+    eq_(dict(b=2, z=4),
+        evaluate_dict_with_conditions(rules, dict(package='foo')))
+    eq_(dict(a=1, b=2, z=4),
+        evaluate_dict_with_conditions(rules, dict(package='foo', version='1.1')))
+    eq_(dict(z=4),
+        evaluate_dict_with_conditions(rules, {}))
+
+    # more specific overrides
+    rules = parse_dict_with_conditions(yaml.safe_load('''
+    a: 1
+    package=foo:
+      a: 2
+      version=2.0:
+        a: 3
+    version=1.0:
+      a: 4
+    '''))
+    eq_(dict(a=1), evaluate_dict_with_conditions(rules, {}))
+    eq_(dict(a=2), evaluate_dict_with_conditions(rules, dict(package='foo')))
+    eq_(dict(a=3), evaluate_dict_with_conditions(rules, dict(package='foo', version='2.0')))
+    with assert_raises(ConditionsNotNested):
+        evaluate_dict_with_conditions(rules, dict(package='foo', version='1.0'))
+    
+def test_parse_list_with_conditions():
     doc = yaml.safe_load('''
     - a
     - a
@@ -135,50 +76,93 @@ def test_parse_list_rules():
     - a: b
       c: d
     ''')
-    t = parse_list_rules(doc)
+    t = parse_list_with_conditions(doc)
     eq_(t, [Extend(TrueCondition(), ['a', 'a']),
             Extend(Match('package', 'foo') & Match('version', 'bar'), ['a', 'b']),
             Extend(Match('package', 'foo'), ['b']),
             Extend(TrueCondition(), ['a', 'c'])])
+
+def test_evaluate_list_with_conditions():
+    rules = parse_list_with_conditions(yaml.safe_load('''
+    - project=bar:
+      - bar
+    - project=baz:
+      - version=3:
+        - baz
+    - foo
+    - project=bar:
+      - bar
+    '''))
+
+    eq_(['foo'],
+        evaluate_list_with_conditions(rules, {}))
+    eq_(['bar', 'foo', 'bar'],
+        evaluate_list_with_conditions(rules, dict(project='bar')))
+    eq_(['baz', 'foo'],
+        evaluate_list_with_conditions(rules, dict(project='baz', version='3')))
+    eq_(['foo'],
+        evaluate_list_with_conditions(rules, dict(project='baz')))
     
 
 def test_include():
-    raise SkipTest()
     with temp_dir() as d:
         cat(pjoin(d, 'stack.yml'), '''\
         include:
           - foo
-          - project=baz:
-            - baz
+          - project=cond_include:
+            - cond_included
 
-        rules:
-          a: a
-          b: b
-          project=baz:
-            c: c
+        build:
+          over_by_cond_include: root
+          over_by_include_a: root
+          over_by_include_b: root
+          over_by_cond_in_include: root
+          two_plus_two=4:
+            two_plus_two_a: root
         ''')
 
         cat(pjoin(d, 'foo.yml'), '''\
         include:
           - bar
-        rules:
-          foo_a: foo_a
-          c: foo_c
+        build:
+          over_by_include_a: in_foo
         ''')
 
         cat(pjoin(d, 'bar.yml'), '''\
-        rules:
+        build:
+          over_by_include_b: in_bar
           two_plus_two=4:
-            x=x
+            two_plus_two_a: in_bar
+            two_plus_two_b: in_bar
+            two_plus_two_c: in_bar
         ''')
         
-        cat(pjoin(d, 'baz.yml'), '''\
-        rules:
-          baz_a: baz_a
-          two_plus_two=4:
-            y=y
+        cat(pjoin(d, 'cond_included.yml'), '''\
+        build:
+          over_by_cond_in_include: in_cond_included
+        profile:
+          another_section: yup
         ''')
 
-        print d
-        print parse_stack_spec(d)
-        
+        t = parse_stack_spec(d)
+        #pprint(t)
+        eq_({'build':
+             {'over_by_cond_in_include': Select((TrueCondition(), 'root'),
+                                                (Match('project', 'cond_include'), 'in_cond_included')),
+              'over_by_cond_include': Select((TrueCondition(), 'root')),
+
+              # the entries below are illegal as no configuration can pick a choice,
+              # but it should be the the result of the parse nevertheless
+              'over_by_include_a': Select((TrueCondition(), 'root'),
+                                          (TrueCondition(), 'in_foo')),
+              'over_by_include_b': Select((TrueCondition(), 'root'),
+                                          (TrueCondition(), 'in_bar')),
+              'two_plus_two_a': Select((Match('two_plus_two', '4'), 'root'),
+                                       (Match('two_plus_two', '4'), 'in_bar')),
+              'two_plus_two_b': Select((Match('two_plus_two', '4'), 'in_bar')),
+              'two_plus_two_c': Select((Match('two_plus_two', '4'), 'in_bar'))},
+             'profile':
+             {'another_section': Select((Match('project', 'cond_include'), 'yup'))}
+             },
+            t)
+

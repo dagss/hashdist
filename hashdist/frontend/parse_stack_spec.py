@@ -145,85 +145,24 @@ def parse_condition(s):
     else:
         return None
 
-def parse_action(key, value):
-    """Parses "attr: value" nodes in the rules
+## def parse_action(key, value):
+##     """Parses "attr: value" nodes in the rules
 
-    Currently only "x" and "assign x" (the same) are supported.
-    """
-    words = key.split()
-    if len(words) > 2:
-        raise IllegalStackSpecError('More than two words in "%s"' % s)
-    elif len(words) == 2:
-        action, attrname = words
-        if action == 'set':
-            return attrname, Assign(attrname, value)
-        else:
-            raise IllegalStackSpecError('Unknown action: %s' % s)
-    else:
-        return key, Assign(key, value)
+##     Currently only "x" and "assign x" (the same) are supported.
+##     """
+##     words = key.split()
+##     if len(words) > 2:
+##         raise IllegalStackSpecError('More than two words in "%s"' % s)
+##     elif len(words) == 2:
+##         action, attrname = words
+##         if action == 'set':
+##             return attrname, Assign(attrname, value)
+##         else:
+##             raise IllegalStackSpecError('Unknown action: %s' % s)
+##     else:
+##         return key, Assign(key, value)
 
-def parse_dict_with_rules(doc):
-    """Given the YAML-parsed strings, to the extra-interpretation of rules and actions
-
-    Results in a new document with the same rule nesting structure, but with
-    strings replaced with AST nodes
-    """
-    result = []
-    for key, value in doc.items():
-        expr = parse_condition(key)
-        if expr:
-            result.append((expr, parse_dict_with_rules(value)))
-        else:
-            attrname, action = parse_action(key, value)
-            result.append((None, action))
-    return result
-
-def parse_list_with_rules(doc):
-    """Given the YAML-parsed strings, to the extra-interpretation of rules and actions
-
-    Results in a new document with the same rule nesting structure, but with
-    strings replaced with AST nodes
-    """
-    if not type(doc) is list:
-        raise IllegalStackSpecError('expected list but found %r' % type(doc))
-
-    result = []
-    for item in doc:
-        if isinstance(item, dict):
-            if len(item) != 1:
-                raise IllegalStackSpecError("on rule per item when using rules within lists")
-            key, value = item.items()[0]
-            expr = parse_condition(key)
-            if not expr:
-                result.append((None, item))
-            else:
-                result.append((expr, parse_list_with_rules(value)))
-        else:
-            result.append((None, item))
-    return result
-
-def evaluate_list_with_rules(rules, cfg, out_list=None):
-    """Evaluates the rules given variables in `cfg` to produce a resulting list
-
-    Parameters
-    ----------
-
-    rules : list
-        Syntax tree in format emitted by `parse_rules_doc`
-    """
-    if out_list is None:
-        out_list = []
-    for rule in rules:
-        expr, arg = rule
-        if expr is None:
-            out_list.append(arg)
-        elif expr.satisfied_by(cfg):
-            children = arg
-            assert isinstance(children, list)
-            evaluate_list_with_rules(children, cfg, out_list)
-    return out_list
-
-def parse_list_rules(doc, parent_condition=true_condition, result=None):
+def parse_list_with_conditions(doc, parent_condition=true_condition, result=None):
     result = result if result is not None else []
     buffer = []
     def emit_buffer():
@@ -241,7 +180,7 @@ def parse_list_rules(doc, parent_condition=true_condition, result=None):
                 key, value = item.items()[0]
                 cond = parse_condition(key)
                 if cond:
-                    parse_list_rules(value, parent_condition & cond, result)
+                    parse_list_with_conditions(value, parent_condition & cond, result)
                 else:
                     raise IllegalStackSpecError('dict within list not currently supported/needed')
             else:
@@ -256,7 +195,7 @@ def parse_list_rules(doc, parent_condition=true_condition, result=None):
     emit_buffer()
     return result
 
-def parse_dict_rules(doc, parent_condition=true_condition):
+def parse_dict_with_conditions(doc, parent_condition=true_condition):
     """Turns a tree of conditions/selectors and attribute actions into a list
 
     Turns::
@@ -281,7 +220,10 @@ def parse_dict_rules(doc, parent_condition=true_condition):
         value = doc[key]
         cond = parse_condition(key)
         if cond:
-            for merge_key, merge_select in parse_dict_rules(value, parent_condition & cond).items():
+            if not isinstance(value, dict):
+                raise IllegalStackSpecError('child of condition "%s" not a dict' % cond)
+            recurse_result = parse_dict_with_conditions(value, parent_condition & cond)
+            for merge_key, merge_select in recurse_result.items():
                 result[merge_key] = result.get(merge_key, None) + merge_select
         elif isinstance(value, dict):
             raise IllegalStackSpecError('nested dicts not currently supported/needed')
@@ -289,14 +231,6 @@ def parse_dict_rules(doc, parent_condition=true_condition):
             select = Select((parent_condition, value)) + result.get(key, None)
             result[key] = select
     return result
-
-def evaluate_rules(rules, cfg):
-    if isinstance(rules, list):
-        return evaluate_list_rules(rules, cfg)
-    elif isinstance(rules, dict):
-        return evaluate_dict_rules(rules, cfg)
-    else:
-        raise TypeError()
 
 def select_option(options):
     """Which options out of multiple possible to pick?
@@ -336,7 +270,7 @@ def select_option(options):
     # OK, they're all nested, select the last (most specific) one
     return options[-1]
 
-def evaluate_dict_with_rules(rules, cfg):
+def evaluate_dict_with_conditions(rules, cfg):
     result = {}
     for key, select in rules.items():
         assert type(select) is Select
@@ -348,15 +282,15 @@ def evaluate_dict_with_rules(rules, cfg):
             result[key] = option[1]
     return result
 
-class TreeStackSpec(object):
-    """
-    A stack spec stored as the tree provided by the user.
-    """
-    def __init__(self, docs):
-        self.docs = docs
+def evaluate_list_with_conditions(rules, cfg):
+    result = []
+    for rule in rules:
+        assert type(rule) is Extend
+        if rule.condition.satisfied_by(cfg):
+            rule.apply(result)
+    return result
 
-
-def parse_stack_spec(filename, encountered=None, parent_conditions=()):
+def parse_stack_spec(filename, encountered=None, parent_condition=true_condition):
     """
     Loads stack spec files
     """
@@ -366,7 +300,7 @@ def parse_stack_spec(filename, encountered=None, parent_conditions=()):
         filename = pjoin(filename, 'stack.yml')
     filename = os.path.realpath(filename)
     if filename in encountered:
-        raise IllegalStackSpecError("Infinite include loop")
+        raise IllegalStackSpecError("Infinite include loop at %s" % filename)
     encountered.add(filename)
     dir_name = os.path.dirname(filename)
     with open(filename) as f:
@@ -375,27 +309,37 @@ def parse_stack_spec(filename, encountered=None, parent_conditions=()):
     def resolve_included_file(basename):
         return pjoin(dir_name, basename) + '.yml'
 
-    def walk(node, parent_conditions):
-        # walk conditions in include section; for every leaf call parse_stack_spec
-        # with given parent_conditions
-        result = []
-        for expr, arg in node:
-            if expr is None:
-                included_doc = parse_stack_spec(resolve_included_file(arg), parent_conditions)
-            else:
-                walk(arg, parent_conditions + (expr,))
-
-    include = parse_list_with_rules(doc.get('include', []))
-    walk(include)
-
+    if 'include' in doc:
+        include_section = doc.get('include', [])
+        del doc['include']
+    else:
+        include_section = []
     
-    print include
-    return
-    for include in doc.get('include', ()):
-        print include
-        included_filename = pjoin(dir_name, include) + '.yml'
-        if not os.path.isfile(included_filename):
-            raise IllegalStackSpecError('Included file "%s" not found')
-        parse_stack_spec(included_filename, encountered)
-    #return docs
+    # two-level dicts explicitly; should probably extend to n-level
+    # inside of parse_dict_with_conditions in time
+    result = {}
+    for section, section_doc in doc.items():
+        if not isinstance(section_doc, dict):
+            raise IllegalStackSpecError('%s section should be a dict' % value)
+        result[section] = parse_dict_with_conditions(section_doc, parent_condition)
 
+    # merge in included sections (easier to do this last, and order should not matter
+    # by definition)
+    include_list = parse_list_with_conditions(include_section)
+    for segment in include_list:
+        assert type(segment) is Extend
+        child_cond = parent_condition & segment.condition
+        for basename in segment.value_list:
+            included_doc = parse_stack_spec(resolve_included_file(basename),
+                                            encountered,
+                                            child_cond)
+            for section, section_doc in included_doc.items():
+                section_result = result.setdefault(section, {})
+                
+                for key, value in section_doc.items():
+                    if key in section_result:
+                        section_result[key] = section_result.get(key, None) + value
+                    else:
+                        section_result[key] = value
+
+    return result
