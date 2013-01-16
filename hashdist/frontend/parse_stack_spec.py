@@ -92,6 +92,9 @@ class TrueCondition(Condition):
     def satisfied_by(self, cfg):
         return True
 
+    def partial_satisfy(self, cfg):
+        return self
+
     def _lt_same_type(self, other):
         return False
 
@@ -119,6 +122,21 @@ class And(Condition):
     def satisfied_by(self, cfg):
         return all(x.satisfied_by(cfg) for x in self.children)
 
+    def partial_satisfy(self, cfg):
+        """Returns a new condition where any terms evaluating to true
+        under `cfg` are removed. Returns object equivalent to `self`
+        if there is no match at all, or ``TrueCondition()`` if there
+        is a complete match.
+        """
+        terms = [child.partial_satisfy(cfg) for child in self.children]
+        terms = [term for term in terms if type(term) is not TrueCondition]
+        if len(terms) == 0:
+            return TrueCondition()
+        elif len(terms) == 1:
+            return terms[0]
+        else:
+            return And(terms)
+
     def _lt_same_type(self, other):
         # list comparison will do fine, since lists should be sorted
         return self.children < other.children
@@ -133,6 +151,17 @@ class Match(Condition):
 
     def satisfied_by(self, cfg):
         return (self.varname in cfg and cfg[self.varname] == self.value)
+
+    def get_mentioned_values(self):
+        # Extract values to use to infer enums; for now very simple.
+        # In time extract limits, e.g., for "1.2 to 3.4", return ["1.2", "3.4"]
+        return [self.value]
+
+    def partial_satisfy(self, cfg):
+        if self.satisfied_by(cfg):
+            return true_condition
+        else:
+            return self
 
     def _lt_same_type(self, other):
         return (self.varname, self.value) < (other.varname, other.value)

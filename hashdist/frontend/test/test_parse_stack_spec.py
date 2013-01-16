@@ -16,6 +16,15 @@ def cat(filename, contents):
     with open(filename, 'w') as f:
         f.write(dedent(contents))
 
+def test_partial_satisfy():
+    expr = Match('foo', 1) & Match('bar', 1) & Match('baz', 2)
+    eq_(expr, expr.partial_satisfy(dict(foo=2)))
+    eq_(Match('bar', 1), expr.partial_satisfy(dict(foo=1, baz=2)))
+    eq_(Match('bar', 1) & Match('baz', 2),
+        expr.partial_satisfy(dict(foo=1)))
+    eq_(TrueCondition(), expr.partial_satisfy(dict(foo=1, bar=1, baz=2)))
+    eq_(TrueCondition(), TrueCondition().partial_satisfy({}))
+
 def test_merge_parsed_dicts():
     # basic non-conditional case
     t = merge_parsed_dicts({'a': {'b': Select((TrueCondition(), 3))},
