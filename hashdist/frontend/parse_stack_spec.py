@@ -321,7 +321,9 @@ def select_option(options):
     # OK, they're all nested, select the last (most specific) one
     return options[-1]
 
-def evaluate_dict_with_conditions(rules, cfg):
+def evaluate_dict_with_conditions(rules, cfg, include_keys=None):
+    if include_keys:
+        rules = dict((key, value) for key, value in rules.items() if key in include_keys)
     result = {}
     for key, value in rules.items():
         if isinstance(value, Select):
