@@ -28,6 +28,5 @@ class Use(object):
         from ..frontend import build_yaml_profile
         if not args.profile:
             args.profile = 'default'
-        build_yaml_profile(args.path, args.profile, {})
-
+        build_yaml_profile(ctx.config, ctx.logger, args.path, args.profile, {})
 
