@@ -85,6 +85,8 @@ def test_evaluate_dict_with_conditions():
     eq_(dict(z=4, nested={}),
         evaluate_dict_with_conditions(rules, {}))
 
+    eq_(dict(a=1), evaluate_dict_with_conditions(rules, dict(package='foo', version='1.1'), ['a']))
+
     with assert_raises(ConditionsNotNested):
         evaluate_dict_with_conditions(rules, dict(package='foo', version='1.1', frob='borf'))
 
