@@ -334,8 +334,7 @@ def evaluate_dict_with_conditions(rules, cfg):
                 result[key] = value
         else:
             value = evaluate_dict_with_conditions(value, cfg)
-            if len(value) > 0:
-                result[key] = value
+            result[key] = value
     return result
 
 def evaluate_list_with_conditions(rules, cfg):
