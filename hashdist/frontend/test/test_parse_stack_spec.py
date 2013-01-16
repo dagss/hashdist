@@ -7,6 +7,8 @@ from ..parse_stack_spec import *
 from pprint import pprint
 from textwrap import dedent
 
+from ..marked_yaml import marked_yaml_load
+
 from ...core.test.utils import temp_dir
 
 
@@ -55,6 +57,13 @@ def test_parse_dict_with_conditions():
                     'b': Select((Match('package', 'foo') & Match('version', 'bar'), 3))}},
         t)
 
+def test_evaluate_empty_dict():
+    doc = marked_yaml_load('''
+    foo: {}
+    ''')
+    t = evaluate_dict_with_conditions(doc, {})
+    assert dict(foo={}) == t
+
 def test_evaluate_dict_with_conditions():
     # simplest case
     rules = parse_dict_with_conditions(yaml.safe_load('''
@@ -69,11 +78,11 @@ def test_evaluate_dict_with_conditions():
     z: 4
     '''))
 
-    eq_(dict(b=2, z=4),
+    eq_(dict(b=2, z=4, nested={}),
         evaluate_dict_with_conditions(rules, dict(package='foo')))
     eq_(dict(a=1, b=2, z=4, nested=dict(a=2, b=3)),
         evaluate_dict_with_conditions(rules, dict(package='foo', version='1.1')))
-    eq_(dict(z=4),
+    eq_(dict(z=4, nested={}),
         evaluate_dict_with_conditions(rules, {}))
 
     with assert_raises(ConditionsNotNested):
