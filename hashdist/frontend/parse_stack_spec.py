@@ -1,6 +1,7 @@
 import os
 from os.path import join as pjoin
 from functools import total_ordering
+from marked_yaml import marked_yaml_load
 
 from ..deps import yaml
 
@@ -359,7 +360,7 @@ def parse_stack_spec(filename, encountered=None, parent_condition=true_condition
     encountered.add(filename)
     dir_name = os.path.dirname(filename)
     with open(filename) as f:
-        doc = yaml.safe_load(f)
+        doc = marked_yaml_load(f)
 
     def resolve_included_file(basename):
         return pjoin(dir_name, basename) + '.yml'

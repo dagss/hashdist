@@ -80,5 +80,5 @@ class MarkedLoader(Reader, Scanner, Parser, Composer, NodeConstructor, Resolver)
         SafeConstructor.__init__(self)
         Resolver.__init__(self)
 
-def marked_load(stream):
+def marked_yaml_load(stream):
     return MarkedLoader(stream).get_single_data()
