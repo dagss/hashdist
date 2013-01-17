@@ -1,5 +1,6 @@
 """
-A PyYAML loader that annotates position in source code.
+A PyYAML loader subclass that is fit for parsing DSLs: It annotates
+positions in source code, and only parses values as strings.
 
 The loader is based on `SafeConstructor`, i.e., the behaviour of
 `yaml.safe_load`, but in addition:
@@ -11,7 +12,8 @@ The loader is based on `SafeConstructor`, i.e., the behaviour of
  - Every string is always returned as unicode, no ASCII-ficiation is
    attempted.
 
- - Note that int/bool/... are returned unchanged for now
+ - Note that only string content is ever returned (uses BaseResolver rather
+   than Resolver)
 """
 
 
@@ -19,7 +21,7 @@ from hashdist.deps.yaml.composer import Composer
 from hashdist.deps.yaml.reader import Reader
 from hashdist.deps.yaml.scanner import Scanner
 from hashdist.deps.yaml.composer import Composer
-from hashdist.deps.yaml.resolver import Resolver
+from hashdist.deps.yaml.resolver import BaseResolver
 from hashdist.deps.yaml.parser import Parser
 from hashdist.deps.yaml.constructor import Constructor, BaseConstructor, SafeConstructor
 
@@ -71,14 +73,15 @@ NodeConstructor.add_constructor(
         NodeConstructor.construct_yaml_str)
 
 
-class MarkedLoader(Reader, Scanner, Parser, Composer, NodeConstructor, Resolver):
+# Use BaseResolver to avoid parsing the string nodes
+class MarkedLoader(Reader, Scanner, Parser, Composer, NodeConstructor, BaseResolver):
     def __init__(self, stream):
         Reader.__init__(self, stream)
         Scanner.__init__(self)
         Parser.__init__(self)
         Composer.__init__(self)
         SafeConstructor.__init__(self)
-        Resolver.__init__(self)
+        BaseResolver.__init__(self)
 
 def marked_yaml_load(stream):
     return MarkedLoader(stream).get_single_data()

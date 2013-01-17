@@ -1,10 +1,10 @@
-from .. import marked_yaml
+from ..marked_yaml import marked_yaml_load
 
 def test_marked_yaml():
     def loc(obj):
         return (obj.start_mark.line, obj.start_mark.column, obj.end_mark.line, obj.end_mark.column)
     
-    d = marked_yaml.marked_yaml_load( # note: test very sensitive to whitespace in string below
+    d = marked_yaml_load( # note: test very sensitive to whitespace in string below
     '''\
     a:
       [b, c, {d: e}]
@@ -21,3 +21,12 @@ def test_marked_yaml():
     assert isinstance(d['f'], dict)
     assert isinstance(d['a'], list)
 
+
+def test_scalars():
+    def check(x):
+        got = marked_yaml_load(x)
+        assert isinstance(got, unicode)
+        assert x == got
+    check('3')
+    check('yes')
+    check('3.3')
