@@ -32,10 +32,8 @@ Treatment of sections
             # not legal: var1=..., as it would create cycle
 
 **profiles**:
-    Conditions here can only be within a profile name, and depend on
-    fully evaluated rules (does not feed back into `rules`). The
-    selected profile name does feed into rules, but conditions can't
-    be used to choose a profile.
+    Currently does not allow conditions. Conditions implicitly added
+    through `include` will be ignored. This needs to be hashed out.
 
 ::
 
@@ -95,7 +93,6 @@ def evaluate_tree_with_conditions(node, cfg):
         result = []
         for item in node:
             try:
-                print item
                 ev_item = evaluate_tree_with_conditions(item, cfg)
             except NoOptionFoundError:
                 pass
@@ -175,7 +172,7 @@ class Node(object):
         return self._input_vars
 
 # inspired by string.Template source code
-_escape_re = re.compile(r'\\$')
+_escape_re = re.compile(r'\\\$')
 _subst_re = re.compile(r"""
   (?<!\\)\$(?:
     (?P<named>[_a-z][_a-z0-9]*)|
@@ -204,7 +201,8 @@ class StringSubst(Node):
         def lookup(match):
             varname = match.group('named') or match.group('braced')
             return unicode(cfg[varname])
-        return _subst_re.sub(lookup, self.pattern)
+        x = _subst_re.sub(lookup, self.pattern)
+        return _escape_re.sub('$', x)
 
 _empty_set = frozenset()
 class StringConstant(Node):
@@ -498,8 +496,11 @@ def parse_list_with_conditions(doc, under_condition=true_condition):
             if cond:
                 if not isinstance(value, list):
                     raise IllegalStackSpecError('a list condition must contain list items', value)
-                parsed_item = parse_list_with_conditions(value, under_condition & cond)
+                parsed_lst = parse_list_with_conditions(value, under_condition & cond)
+                result.extend(parsed_lst)
+            # else fall through to "if not cond" below    
         elif isinstance(item, dict):
+            # just check that none of the items are conditions, then fall through
             for key, value in item.items():
                 if parse_condition(key):
                     raise IllegalStackSpecError("conditions in list must all be prepended by '-' "
@@ -507,8 +508,7 @@ def parse_list_with_conditions(doc, under_condition=true_condition):
 
         if not cond:
             parsed_item = parse_condition_tree(item, under_condition)
-            
-        result.append(parsed_item)
+            result.append(parsed_item)
     return result
 
 

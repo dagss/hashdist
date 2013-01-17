@@ -24,6 +24,7 @@ def test_string_subst():
     assert StringSubst('\${FOO}').input_vars() == set([])
     assert StringSubst('\$FOO').input_vars() == set([])
     assert StringSubst('test$FOO-${BAR}s${FOO}').evaluate(dict(FOO='F', BAR='B')) == 'testF-BsF'
+    assert StringSubst('\$FOO \$').evaluate({}) == '$FOO $'
 
 def test_parse_scalar():
     assert type(parse_scalar('$FOO')) is Get
@@ -329,20 +330,13 @@ def test_structured_rhs_program():
          'foo': ['1', '2', '3'],
          'machine': 'abel'},
          p.evaluate_all(dict(machine='abel')))
-    return
     eq_({'bar': {'one': '1', 'three': '3'},
          'foo': ['1', '3'],
          'machine': None},
         p.evaluate_all(dict()))
     
-    #assert (dict(machine='abel', foo='bar', bar=1, X=1, baz='1a') ==
-    #        p.evaluate_all(dict(machine='abel', X=1)))
-
-    #assert ({u'machine': None, 'X': 2, u'foo': None, u'baz': u'2a', u'bar': None} ==
-    #        p.evaluate_all(dict(X=2)))
-    
 def test_nested_rhs_program():
-    # test that *actual* nested rhs works
+    # test that nested rhs values works
     p = parse_stack_dsl('''
     rules:
       foo:
