@@ -1,9 +1,7 @@
 import os
 from os.path import join as pjoin
 from functools import total_ordering
-from marked_yaml import marked_yaml_load
-
-from ..deps import yaml
+from .marked_yaml import marked_yaml_load
 
 class IllegalStackSpecError(Exception):
     pass
@@ -11,12 +9,25 @@ class IllegalStackSpecError(Exception):
 class ConditionsNotNested(IllegalStackSpecError):
     pass
 
-class AstNode(object):
+
+class ProgramGraph(object):
+    """
+    Graph of assignments to variables and their inputs
+    """
+
+    def __init__(self):
+        self.variable_assignments = {}
+
+    
+    
+
+
+class Node(object):
     def __hash__(self):
         return hash(self.tuple)
 
     def __eq__(self, other):
-        if not isinstance(other, AstNode):
+        if not isinstance(other, Node):
             return False
         return self.tuple == other.tuple
 
@@ -27,7 +38,7 @@ class AstNode(object):
         cls = self.tuple[0]
         return '%s(%s)' % (cls.__name__, ', '.join(repr(arg) for arg in self.tuple[1:]))
 
-class Select(AstNode):
+class Select(Node):
     def __init__(self, *options):
         # Always turn Select(Selection([a], [b]), [c]) to Select([a, b, c])
         def flatten(x):
@@ -65,7 +76,7 @@ class Select(AstNode):
         return all(tup[0] is True for tup in self.options)
 
 @total_ordering
-class Condition(AstNode):
+class Condition(Node):
     def __lt__(self, other):
         if type(self) != type(other):
             return type(self).__name__ < type(other).__name__
@@ -166,7 +177,7 @@ class Match(Condition):
     def _lt_same_type(self, other):
         return (self.varname, self.value) < (other.varname, other.value)
 
-class Assign(AstNode):
+class Assign(Node):
     """AST node for "attrname: value" and "assign attrname: value"
     """
     def __init__(self, attrname, value):
@@ -179,7 +190,7 @@ class Assign(AstNode):
             raise IllegalStackSpecError('"%s" assigned twice' % self.attrname)
         attrs[self.attrname] = self.value
 
-class Extend(AstNode):
+class Extend(Node):
     """AST node for appending a list given a condition"""
     def __init__(self, condition, value_list):
         self.condition = condition
@@ -376,24 +387,11 @@ def evaluate_list_with_conditions(rules, cfg):
             rule.apply(result)
     return result
 
-def parse_stack_spec(filename, encountered=None, parent_condition=true_condition):
-    """
-    Loads stack spec files
-    """
-    if encountered is None:
-        encountered = set()
-    if os.path.isdir(filename):
-        filename = pjoin(filename, 'stack.yml')
-    filename = os.path.realpath(filename)
-    if filename in encountered:
-        raise IllegalStackSpecError("Infinite include loop at %s" % filename)
-    encountered.add(filename)
-    dir_name = os.path.dirname(filename)
-    with open(filename) as f:
-        doc = marked_yaml_load(f)
+def parse_stack_dsl(stream, include_dir=None, encountered=None, parent_condition=true_condition):
+    doc = marked_yaml_load(stream)
 
     def resolve_included_file(basename):
-        return pjoin(dir_name, basename) + '.yml'
+        return pjoin(include_dir, basename) + '.yml'
 
     if 'include' in doc:
         include_section = doc.get('include', [])
@@ -403,15 +401,30 @@ def parse_stack_spec(filename, encountered=None, parent_condition=true_condition
 
     result = {}
     include_list = parse_list_with_conditions(include_section)
+    if include_list and include_dir is None:
+        raise TypeError("No include_dir passed, but spec contains an include section")
     for segment in include_list:
         assert type(segment) is Extend
         child_cond = parent_condition & segment.condition
         for basename in segment.value_list:
-            included_doc = parse_stack_spec(resolve_included_file(basename),
-                                            encountered,
-                                            child_cond)
+            include_filename = resolve_included_file(basename)
+            included_doc = parse_stack_dsl_file(include_filename, encountered, child_cond)
             result = merge_parsed_dicts(result, included_doc)
-
     result = merge_parsed_dicts(result,
                                 parse_dict_with_conditions(doc, parent_condition))
     return result
+    
+def parse_stack_dsl_file(filename, encountered=None, parent_condition=true_condition):
+    if os.path.isdir(filename):
+        filename = pjoin(filename, 'stack.yml')
+    filename = os.path.realpath(filename)
+
+    if encountered is None:
+        encountered = set()
+    if filename in encountered:
+        raise IllegalStackSpecError("Infinite include loop at %s" % filename)
+    encountered.add(filename)
+
+    include_dir = os.path.dirname(filename)
+    with open(filename) as f:
+        return parse_stack_dsl(f, include_dir, encountered, parent_condition)
