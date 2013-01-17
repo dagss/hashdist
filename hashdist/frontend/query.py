@@ -1,4 +1,4 @@
-from .parse_stack_spec import evaluate_dict_with_conditions
+from .stack_dsl import evaluate_dict_with_conditions
 from ..core.utils import substitute
 
 def normalize_cfg_vars(cfg):
