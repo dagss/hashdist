@@ -68,8 +68,8 @@ def test_merge_parsed_dicts():
 
 def test_parse_dict_with_conditions():
     doc = yaml.safe_load('''
-    package=foo:
-        version=bar:
+    when package=foo:
+        when version=bar:
             a: 1
             nested: {a: 2, b: 3}
         b: 2
@@ -95,12 +95,12 @@ def test_evaluate_empty_dict():
 def test_evaluate_dict_with_conditions():
     # simplest case
     rules = parse_dict_with_conditions(yaml.safe_load('''
-    package=foo:
-        version=1.1:
+    when package=foo:
+        when version=1.1:
             a: 1
             nested: {a: 2, b: 3}
         b: 2
-        frob=borf:
+        when frob=borf:
             nested:
                 a: 3
     z: 4
@@ -138,8 +138,8 @@ def test_parse_list_with_conditions():
     doc = yaml.safe_load('''
     - a
     - a
-    - package=foo:
-        - version=bar:
+    - when package=foo:
+        - when version=bar:
             - a
             - b
         - b
@@ -157,7 +157,7 @@ def test_parse_list_with_conditions():
 def test_parse_mixed():
     doc = marked_yaml_load('''
     a:
-      - package=foo:
+      - when package=foo:
         - b: $X
         - c: A${X}Y
       - e: x
@@ -185,7 +185,7 @@ def test_parse_errors():
     doc = yaml.safe_load('''
     a:
        x: 1
-       package=foo:
+       when package=foo:
           x: {here_is: a_dict}
     ''')
     # TODO: mixing list/scalar and dict/list
@@ -194,25 +194,25 @@ def test_parse_errors():
     # mixing dist/list is illegal
     doc = yaml.safe_load('''
     a:
-       package=foo:
+       when package=foo:
           - list_item
     ''')
 
     doc = yaml.safe_load('''
     a:
-       - package=foo:
+       - when package=foo:
           dict: item
     ''')
 
 def test_evaluate_list_with_conditions():
     rules = parse_list_with_conditions(yaml.safe_load('''
-    - package=bar:
+    - when package=bar:
       - bar
-    - package=baz:
+    - when package=baz:
       - version=3:
         - baz
     - foo
-    - package=bar:
+    - when package=bar:
       - bar
     '''))
 
@@ -240,13 +240,13 @@ def test_include():
         cat(pjoin(d, 'stack.yml'), '''\
         include:
           - foo
-          - package=cond_include:
+          - when package=cond_include:
             - cond_included
 
         build:
           over_by_cond_include: root
           over_by_cond_in_include: root
-          two_plus_two=4:
+          when two_plus_two=4:
             two_plus_two_a: root
         ''')
 
@@ -260,7 +260,7 @@ def test_include():
         cat(pjoin(d, 'bar.yml'), '''\
         build:
           by_include_bar: in_bar
-          two_plus_two=4:
+          when two_plus_two=4:
             two_plus_two_b: in_bar
         ''')
         
@@ -286,7 +286,7 @@ def test_include():
 def test_simple_program():
     p = parse_stack_dsl('''
     rules:
-      machine=abel:
+      when machine=abel:
         foo: bar
         bar: $X
       baz: ${X}a
@@ -300,7 +300,7 @@ def test_simple_program():
 def test_simple_program():
     p = parse_stack_dsl('''
     rules:
-      machine=abel:
+      when machine=abel:
         foo: bar
         bar: $X
       baz: ${X}a
@@ -316,12 +316,12 @@ def test_structured_rhs_program():
     rules:
       foo:
         - 1
-        - machine=abel:
+        - when machine=abel:
           - 2
         - 3
       bar:
         one: 1
-        machine=abel:
+        when machine=abel:
           two: 2
         three: 3
     ''')

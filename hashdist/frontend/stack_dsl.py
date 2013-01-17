@@ -473,16 +473,15 @@ def iterate_leaves(node):
     else:
         yield node
 
+_when_re = re.compile('when\s+(.*)=(.*)')
 def parse_condition(s):
     """Parses a condition expression node, or returns None if the string is not a match expression/
 
-    Currently only "varname=value" is supported, but "1.0<=version<1.4" etc.
-    may follow.
+    Currently only "when varname=value" is supported.
     """
-    if '=' in s:
-        if s.count('=') != 1:
-            raise IllegalStackSpecError('= encountered more than once in %s' % s)
-        return Match(*s.split('='))
+    m = _when_re.match(s)
+    if m:
+        return Match(m.group(1), m.group(2))
     else:
         return None
 
