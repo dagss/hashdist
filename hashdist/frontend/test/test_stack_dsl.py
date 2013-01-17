@@ -3,13 +3,14 @@ from ...deps import yaml
 from nose.tools import eq_, ok_, assert_raises
 from nose import SkipTest
 from .. import parse_stack_spec
-from ..parse_stack_spec import *
 from pprint import pprint
 from textwrap import dedent
 
-from ..marked_yaml import marked_yaml_load
-
 from ...core.test.utils import temp_dir
+
+from ..marked_yaml import marked_yaml_load
+from ..stack_dsl import *
+
 
 
 def cat(filename, contents):

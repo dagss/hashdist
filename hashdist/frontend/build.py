@@ -1,4 +1,4 @@
-from .parse_stack_spec import parse_stack_spec, evaluate_dict_with_conditions, Match, Select
+from .stack_dsl import parse_stack_spec, evaluate_dict_with_conditions, Match, Select
 from .query import normalize_cfg_vars, query_attrs
 
 from ..core import BuildStore, SourceCache, DiskCache
