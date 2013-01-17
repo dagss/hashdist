@@ -16,6 +16,24 @@ def cat(filename, contents):
     with open(filename, 'w') as f:
         f.write(dedent(contents))
 
+def test_string_subst():
+    assert StringSubst('test$FOO-${BAR}s${FOO}').input_vars() == set(['FOO', 'BAR'])
+    assert StringSubst('$FOO').input_vars() == set(['FOO'])
+    assert StringSubst(' $FOO').input_vars() == set(['FOO'])
+    assert StringSubst(' ${FOO}').input_vars() == set(['FOO'])
+    assert StringSubst('\${FOO}').input_vars() == set([])
+    assert StringSubst('\$FOO').input_vars() == set([])
+    assert StringSubst('test$FOO-${BAR}s${FOO}').evaluate(dict(FOO='F', BAR='B')) == 'testF-BsF'
+
+def test_parse_scalar():
+    assert type(parse_scalar('$FOO')) is Get
+    assert type(parse_scalar('${FOO}')) is StringSubst
+    assert type(parse_scalar(' $FOO')) is StringSubst
+    assert type(parse_scalar('$FOO bar')) is StringSubst
+    assert type(parse_scalar('\$FOO')) is StringConstant
+    with assert_raises(IllegalStackSpecError):
+        parse_scalar('${ - }')
+
 def test_partial_satisfy():
     expr = Match('foo', 1) & Match('bar', 1) & Match('baz', 2)
     eq_(expr, expr.partial_satisfy(dict(foo=2)))
@@ -135,6 +153,56 @@ def test_parse_list_with_conditions():
             Extend(Match('package', 'foo'), ['b']),
             Extend(TrueCondition(), ['a', 'c'])])
 
+def test_parse_mixed():
+    doc = marked_yaml_load('''
+    a:
+      - package=foo:
+        - b: $X
+        - c: A${X}Y
+      - e: x
+    ''')
+    t = parse_condition_tree(doc)
+    pprint(t)
+
+    # conditions should always be propagated all the way to scalars,
+    # leaving structure untouched
+    doc = marked_yaml_load('''
+    a:
+      - always
+      - package=foo:
+        - x
+        - y
+        - machine=abel:
+          - c:
+              d: x
+    ''')
+    t = parse_condition_tree(doc)
+    pprint(t)
+
+def test_parse_errors():
+    # mixing dict/scalar in structure is not allowed
+    doc = yaml.safe_load('''
+    a:
+       x: 1
+       package=foo:
+          x: {here_is: a_dict}
+    ''')
+    # TODO: mixing list/scalar and dict/list
+
+    
+    # mixing dist/list is illegal
+    doc = yaml.safe_load('''
+    a:
+       package=foo:
+          - list_item
+    ''')
+
+    doc = yaml.safe_load('''
+    a:
+       - package=foo:
+          dict: item
+    ''')
+
 def test_evaluate_list_with_conditions():
     rules = parse_list_with_conditions(yaml.safe_load('''
     - package=bar:
@@ -204,7 +272,6 @@ def test_include():
         ''')
 
         t = parse_stack_dsl_file(d)
-        #pprint(t)
         eq_({'build': {'by_include_bar': Select((TrueCondition(), 'in_bar')),
                        'by_include_foo': Select((TrueCondition(), 'in_foo')),
                        'over_by_cond_in_include': Select((TrueCondition(), 'root'),
@@ -215,4 +282,80 @@ def test_include():
              'profile': {'default': {'another_section': Select((Match('package', 'cond_include'), 'yup'))}}},
             t)
 
+def test_simple_program():
+    p = parse_stack_dsl('''
+    rules:
+      machine=abel:
+        foo: bar
+        bar: $X
+      baz: ${X}a
+    ''')
+    assert (dict(machine='abel', foo='bar', bar=1, X=1, baz='1a') ==
+            p.evaluate_all(dict(machine='abel', X=1)))
 
+    assert ({u'machine': None, 'X': 2, u'foo': None, u'baz': u'2a', u'bar': None} ==
+            p.evaluate_all(dict(X=2)))
+
+def test_simple_program():
+    p = parse_stack_dsl('''
+    rules:
+      machine=abel:
+        foo: bar
+        bar: $X
+      baz: ${X}a
+    ''')
+    eq_(dict(machine='abel', foo='bar', bar=1, X=1, baz='1a'),
+        p.evaluate_all(dict(machine='abel', X=1)))
+
+    eq_({u'machine': None, 'X': 2, u'foo': None, u'baz': u'2a', u'bar': None},
+        p.evaluate_all(dict(X=2)))
+
+def test_structured_rhs_program():
+    p = parse_stack_dsl('''
+    rules:
+      foo:
+        - 1
+        - machine=abel:
+          - 2
+        - 3
+      bar:
+        one: 1
+        machine=abel:
+          two: 2
+        three: 3
+    ''')
+
+    eq_({'bar': {'one': '1', 'two': '2', 'three': '3'},
+         'foo': ['1', '2', '3'],
+         'machine': 'abel'},
+         p.evaluate_all(dict(machine='abel')))
+    return
+    eq_({'bar': {'one': '1', 'three': '3'},
+         'foo': ['1', '3'],
+         'machine': None},
+        p.evaluate_all(dict()))
+    
+    #assert (dict(machine='abel', foo='bar', bar=1, X=1, baz='1a') ==
+    #        p.evaluate_all(dict(machine='abel', X=1)))
+
+    #assert ({u'machine': None, 'X': 2, u'foo': None, u'baz': u'2a', u'bar': None} ==
+    #        p.evaluate_all(dict(X=2)))
+    
+def test_nested_rhs_program():
+    # test that *actual* nested rhs works
+    p = parse_stack_dsl('''
+    rules:
+      foo:
+        - 1
+        - [2]
+        - 3
+      bar:
+        one: 1
+        two: {a: [list, in, dict]}
+        three: 3
+    ''')
+    
+    eq_({'foo': ['1', ['2'], '3'], 'bar': {'one': '1', 'two': {'a': ['list', 'in', 'dict']},
+                                           'three': '3'}},
+        p.evaluate_all(dict()))
+            
