@@ -1,4 +1,4 @@
-from .stack_dsl import parse_stack_spec, evaluate_dict_with_conditions, Match, Select
+from .stack_dsl import parse_stack_dsl, evaluate_dict_with_conditions, Match, Select
 from .query import normalize_cfg_vars, query_attrs
 
 from ..core import BuildStore, SourceCache, DiskCache
@@ -134,7 +134,7 @@ def evaluate_build_attrs(ctx, cfg, attrs):
 
 def build_yaml_profile(config, logger, spec_dir, profile_name, cfg):
 
-    stack_spec = parse_stack_spec(spec_dir)
+    stack_spec = parse_stack_dsl_file(spec_dir)
 
     ctx = StackBuildContext(pipeline,
                             logger=logger,
@@ -142,6 +142,16 @@ def build_yaml_profile(config, logger, spec_dir, profile_name, cfg):
                             source_cache=SourceCache.create_from_config(config, logger),
                             cache=DiskCache.create_from_config(config, logger),
                             stack_spec=stack_spec)
+
+    # Strategy:
+    # 1. Search for all debian: ...; these must not contain $..
+    # 2. Update
+    
+    # 1. configuration, doing dfs to search for packages (roots in profile)
+    #   Q: What if build_deps depends on version=?
+    # 2. build tree where one can vary version... hmm...
+    # 3. 
+
     
     profile_doc = evaluate_dict_with_conditions(stack_spec['profiles'][profile_name], cfg)
     for package, query in profile_doc.items():

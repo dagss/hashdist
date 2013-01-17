@@ -2,7 +2,6 @@ from ...deps import yaml
 
 from nose.tools import eq_, ok_, assert_raises
 from nose import SkipTest
-from .. import parse_stack_spec
 from pprint import pprint
 from textwrap import dedent
 
@@ -204,7 +203,7 @@ def test_include():
             another_section: yup
         ''')
 
-        t = parse_stack_spec(d)
+        t = parse_stack_dsl_file(d)
         #pprint(t)
         eq_({'build': {'by_include_bar': Select((TrueCondition(), 'in_bar')),
                        'by_include_foo': Select((TrueCondition(), 'in_foo')),
@@ -215,4 +214,5 @@ def test_include():
                        'two_plus_two_b': Select((Match('two_plus_two', '4'), 'in_bar'))},
              'profile': {'default': {'another_section': Select((Match('package', 'cond_include'), 'yup'))}}},
             t)
+
 
