@@ -62,7 +62,7 @@ def ensure_empty_existing_dir(d):
     except OSError, e:
         if e.errno == errno.EEXIST:
             if os.listdir(d) != []:
-                raise Exception('target directory %s not empty' % target_dir)
+                raise Exception('target directory %s not empty' % d)
 
 def make_profile(logger, build_store, artifacts, target_dir, virtuals, cfg):
     """
