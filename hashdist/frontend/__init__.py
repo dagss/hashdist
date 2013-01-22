@@ -1,2 +1,3 @@
-from .build import Package, build_packages, create_default_pipeline
+from .build import Package, Pipeline, build_packages, build_profile
+from .stack_dsl import IllegalStackSpecError
 

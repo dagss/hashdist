@@ -1,70 +1,91 @@
-from .stack_dsl import parse_stack_dsl, evaluate_dict_with_conditions, Match, Select
+from .stack_dsl import parse_stack_dsl, evaluate_dict_with_conditions, Match, Select, IllegalStackSpecError
 from .query import normalize_cfg_vars, query_attrs
 
 from ..core import BuildStore, SourceCache, DiskCache, BuildSpec
 from ..core.utils import substitute
 from ..core.hasher import Hasher
 
+import os
+from os.path import join as pjoin
+import imp
+import sys
+
 from pprint import pprint, pformat
 
+from functools import wraps
+
 def search_phase(pipeline, needle):
-    for i, (name, _) in enumerate(pipeline):
+    for i, (name, _, _) in enumerate(pipeline):
         if name == needle:
             return i
     raise ValueError('%s not in pipeline list' % needle)
 
-def add_pipeline_stage(pipeline, after=None, func=None, before=None, name=None):
-    if int(after is None) + int(before is None) != 1:
-        raise TypeError('must specify either after or before')
-
-    if func is None:
-        def decorator(func):
-            add_pipeline_stage(pipeline, after, func, before, name)
-            return func
-        return decorator
-
-    if name is None:
-        name = func.__name__
-
+def add_pipeline_stage(pipeline, after, before, name, func, when):
     needle, offset = (before, 0) if before is not None else (after, 1)
     i = search_phase(pipeline, needle)
-    pipeline.insert(i + offset, (name, func))
+    pipeline.insert(i + offset, (name, func, when))
 
 def run_pipeline(pipeline, *args):
-    for name, func in pipeline:
+    for name, func, when in pipeline:
         if func is not None:
-            func(*args)
+            if when is None or when(*args):
+                func(*args)
     
-class StackBuildPipeline(object):
+class Pipeline(object):
     def __init__(self):
-        # [(phase_name, func)]
-        # register some phase markers initially
-        self.configuration_pipeline = [
-            ('configuration_start', None),
-            ('configuration_end', None),
-            ]
-        self.assemble_pipeline = [
-            ('assemble_start', None),
-            ('recipes', None),
-            ('recipes_profile_install', None),
-            ('post_recipes', None),
-            ('assemble_end', None),
-            ]
+        # gathers registrations from add_assemble_stage:
+        self.assemble_pipeline_registrations = []
+        self._assemble_pipeline = None
 
-    def add_configuration_stage(self, **kw):
-        return add_pipeline_stage(self.configuration_pipeline, **kw)
+    def merge(self, other):
+        if not isinstance(other, Pipeline):
+            raise TypeError()
+        self.assemble_pipeline_registrations.extend(other.assemble_pipeline_registrations)
+        self._assemble_pipeline = None
 
-    def add_assemble_stage(self, **kw):
-        return add_pipeline_stage(self.assemble_pipeline, **kw)
+    def copy(self):
+        p = Pipeline()
+        p.merge(self)
+        return p
 
-    def add_recipe(self, func, name=None):
-        return self.add_assemble_stage(after='recipes', func=func, name=name)
+    def get_assemble_pipeline(self):
+        if self._assemble_pipeline is not None:
+            return self._assemble_pipeline
+        else:
+            self._assemble_pipeline = pipeline = [
+                ('assemble_start', None, None),
+                ('recipes', None, None),
+                ('recipes_profile_install', None, None),
+                ('post_recipes', None, None),
+                ('assemble_end', None, None),
+                ]
+            for after, before, name, func, when in self.assemble_pipeline_registrations:
+                add_pipeline_stage(pipeline, after, before, name, func, when)
+            return pipeline
 
-    def run_configuration(self, *args):
-        run_pipeline(self.configuration_pipeline, *args)
+    def add_assemble_stage(self, after=None, before=None, name=None, func=None, when=None):
+        if int(after is None) + int(before is None) != 1:
+            raise TypeError('must specify either after or before')
+
+        if func is None:
+            def decorator(func):
+                self.add_assemble_stage(after, before, name, func, when)
+                return func
+            # return partially applied function
+            return decorator
+        else:
+            if name is None:
+                name = func.__name__
+            self.assemble_pipeline_registrations.append((after, before, name, func, when))
+            self._assemble_pipeline = None # need to re-assemble after this
+
+    def add_recipe(self, recipe_name, func=None, name=None):
+        def should_run(ctx, pkg, build_spec):
+            return pkg['recipe'] == recipe_name
+        return self.add_assemble_stage(after='recipes', func=func, name=name, when=should_run)
 
     def assemble_build_spec(self, *args):
-        run_pipeline(self.assemble_pipeline, *args)
+        run_pipeline(self.get_assemble_pipeline(), *args)
 
 class StackBuildContext(object):
     def __init__(self, pipeline, logger, cache, build_store, source_cache, artifact_id_map):
@@ -98,15 +119,6 @@ class StackBuildContext(object):
         self.pipeline.assemble_build_spec(self, package_attrs, package_build_spec)
         return package_build_spec
         
-
-def create_default_pipeline():
-    from .default_recipes import register_recipes
-    pipeline = StackBuildPipeline()
-    register_recipes(pipeline)
-    return pipeline
-
-pipeline = create_default_pipeline()
-
 ## @pipeline.add_configuration_stage(after='configuration_start')
 ## def find_possible_versions(ctx, cfg, attrs):
 ##     """
@@ -243,7 +255,9 @@ def get_build_spec(ctx, package):
         "name": package.package,
         "version": package.version,
         }
-    ctx.pipeline.assemble_build_spec(ctx, package.__dict__, package_build_spec)
+    d = dict(package.__dict__)
+    del d['_secure_hash']
+    ctx.pipeline.assemble_build_spec(ctx, d, package_build_spec)
     return BuildSpec(package_build_spec)
 
 def build_packages(config, logger, pipeline, packages):
@@ -281,3 +295,40 @@ def build_packages(config, logger, pipeline, packages):
     for pkg, job in jobs:
         results[pkg] = ctx.build_store.ensure_present(job, config, keep_build='error')
     return results
+
+def build_profile(config, logger, filename, profile_name):
+    stack_py = None
+    if os.path.isdir(filename):
+        if os.path.exists(pjoin(filename, 'stack.py')):
+            stack_py = pjoin(filename, 'stack.py')
+    elif filename.endswith('.py'):
+        stack_py = filename
+        
+    with open(stack_py) as f:
+        # The following causes __name__ == '__hdistspec__' inside the module...
+        try:
+            mod = imp.load_module('__hdistspec__', f, stack_py,
+                                  ('.py', 'r', imp.PY_SOURCE))
+        finally:
+            try:
+                del sys.modules['__hdistspec__']
+            except KeyError:
+                pass
+
+    get_profile_spec = getattr(mod, 'get_profile_spec', None)
+    if get_profile_spec is None:
+        raise NotImplementedError()
+    
+    get_pipeline = getattr(mod, 'get_pipeline', None)
+    if get_pipeline is None:
+        def get_pipeline(config, logger):
+            from .default_recipes import pipeline as default_pipeline
+            p = default_pipeline.copy()
+            mod_pipeline = getattr(mod, 'pipeline', None)
+            if mod_pipeline:
+                p.merge(mod_pipeline)
+            return p
+
+    pipeline = get_pipeline(config, logger)
+    profile = get_profile_spec(config, logger, profile_name)
+    build_packages(config, logger, pipeline, [profile])

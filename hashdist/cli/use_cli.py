@@ -25,8 +25,8 @@ class Use(object):
 
     @staticmethod
     def run(ctx, args):
-        from ..frontend import build_yaml_profile
+        from ..frontend import build_profile
         if not args.profile:
             args.profile = 'default'
-        build_yaml_profile(ctx.config, ctx.logger, args.path, args.profile, {})
+        build_profile(ctx.config, ctx.logger, args.path, args.profile)
 
