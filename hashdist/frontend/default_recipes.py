@@ -51,6 +51,10 @@ def profile_recipe(ctx, pkg, build_spec):
     cmd = ["hdist", "create-profile", "--key=profile", "build.json", "$ARTIFACT"]
     build_spec['build']['script'].append(cmd)
 
+@pipeline.add_recipe('custom-script')
+def custom_script_recipe(ctx, pkg, build_spec):
+    build_spec['build']['script'].extend(pkg['script'])
+
 @pipeline.add_assemble_stage(after='recipes_profile_install')
 def profile_install_symlink_everything(ctx, pkg, build_spec):
     if pkg['recipe'] == 'profile':
@@ -70,6 +74,19 @@ def profile_install_symlink_everything(ctx, pkg, build_spec):
     ''')
 
     build_spec['files'].append(artifact_spec_file)
+
+@pipeline.add_assemble_stage(before='assemble_end')
+def jail(ctx, pkg, build_spec):
+    if pkg.get('jail', 'none') == 'none':
+        return
+
+    if not any(package.package == 'hdistjail' for package in pkg['build_deps']):
+        raise Exception("need dependency on hdistjail to use jail") # TODO auto
+
+    script = build_spec['build']['script']
+    script.insert(0, ['HDIST_JAIL_LOG=$(hdist', 'logpipe', 'jail', 'WARNING', ')'])
+    script.insert(0, ['LD_PRELOAD=$HDISTJAIL/lib/hdistjail.so'])
+
 
 @pipeline.add_assemble_stage(before='assemble_end')
 def check_script_present(ctx, pkg, build_spec):

@@ -47,6 +47,19 @@ gcc = hs.Package(
          }
         ])
 
+hdistjail = hs.Package(
+    package='hdistjail',
+    version='0.1.dev',
+    recipe='custom-script',
+    git_repos=['git@github.com:hashdist/hdist-jail.git gen'],
+    sources=['git:0822cd3ea3f7099ae5cd85081a8779fd21dbd300'],
+    script=[
+        ['make', 'build/hdistjail.so'],
+        ['mkdir', '$ARTIFACT/lib'],
+        ['cp', 'build/hdistjail.so', '$ARTIFACT/lib']
+        ],
+    build_deps=[unix, gcc]
+    )
 
 zlib = hs.Package(
     package='zlib',
@@ -57,23 +70,40 @@ zlib = hs.Package(
     build_deps=[unix, gcc],
     configure=['--prefix=${ARTIFACT}', '--enable-shared'])
 
+hdf5 = hs.Package(
+    package='hdf5',
+    version='1.8.10',
+    recipe='configure-make-install',
+    downloads=['http://www.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.8.10.tar.bz2'],
+    sources=['tar.bz2:7jxgwn5xs5xnvsdaomvypridodr35or2'],
+    configure=['--prefix=${ARTIFACT}', '--with-szlib', '--with-pic'],
+    jail='warn',
+    build_deps=[zlib, unix, gcc, hdistjail])
+
 profile = hs.Package(
     package='profile',
     version='n',
     recipe='profile',
-    soft_deps=[zlib])
+    soft_deps=[hdf5])
     
 
+def get_profile_spec(config, logger, profile_name):
+    if profile_name != 'default':
+        raise hs.IllegalStackSpecError()
+    return profile
 
-pipeline = hs.create_default_pipeline()
+#def get_pipeline(config, logger):
+#    return 
 
-from hashdist.hdist_logging import Logger, DEBUG
-from hashdist.core import load_configuration_from_inifile
-logger = Logger(DEBUG)
-config = load_configuration_from_inifile('/home/dagss/.hdist')
+#pipeline = hs.create_default_pipeline()
 
-results = hs.build_packages(config, logger, pipeline, [profile])
-pprint(results)
+#from hashdist.hdist_logging import Logger, DEBUG
+#from hashdist.core import load_configuration_from_inifile
+#ogger = Logger(DEBUG)
+#config = load_configuration_from_inifile('/home/dagss/.hdist')
+
+#results = hs.build_packages(config, logger, pipeline, [profile])
+#pprint(results)
 
 
 
@@ -85,11 +115,6 @@ pprint(results)
 ##                                'git:87863577a4656d5414b0d598c91fed1dd227f74a',
 ##                                configure_flags=['--with-pic'],
 ##                                unix=unix, gcc=gcc)
-## hdf5 = hr.ConfigureMakeInstall('hdf5', '1.8.10',
-##                                'http://www.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.8.10.tar.bz2',
-##                                'tar.bz2:7jxgwn5xs5xnvsdaomvypridodr35or2',
-##                                configure_flags=['--with-szlib', '--with-pic'],
-##                                zlib=zlib, szip=szip, unix=unix, gcc=gcc)
 
 #profile = hr.Profile([zlib])
 

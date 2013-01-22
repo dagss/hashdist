@@ -52,7 +52,7 @@ from functools import total_ordering
 from .marked_yaml import marked_yaml_load
 
 class IllegalStackSpecError(Exception):
-    def __init__(self, msg, node=None):
+    def __init__(self, msg='', node=None):
         Exception.__init__(self, msg)
         if not (hasattr(node, 'start_mark') and hasattr(node, 'end_mark')):
             node = None
