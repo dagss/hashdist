@@ -311,6 +311,20 @@ def test_simple_program():
     eq_({u'machine': None, 'X': 2, u'foo': None, u'baz': u'2a', u'bar': None},
         p.evaluate_all(dict(X=2)))
 
+def test_override():
+    p = parse_stack_dsl('''
+    rules:
+      foo: default
+      when machine=abel:
+        foo: bar
+    ''')
+    print p.evaluate_all(dict(machine='abel'))
+#    eq_(dict(machine='abel', foo='bar', bar=1, X=1, baz='1a'),
+ #       p.evaluate_all(dict(machine='abel', X=1)))
+
+  #  eq_({u'machine': None, 'X': 2, u'foo': None, u'baz': u'2a', u'bar': None},
+   #     p.evaluate_all(dict(X=2)))
+
 def test_structured_rhs_program():
     p = parse_stack_dsl('''
     rules:
@@ -353,3 +367,44 @@ def test_nested_rhs_program():
                                            'three': '3'}},
         p.evaluate_all(dict()))
             
+def test_declare():
+    p = parse_stack_dsl('''
+    declare:
+      - name: foo
+        type: string-list
+    ''')
+
+
+def test_append():
+    p = parse_stack_dsl("""
+    rules:
+      configure: [a]
+
+      when package == 'hdf5':
+        append configure: ['b', 'c']
+
+      when package == 'zlib':
+        append configure: ['d', 'e']
+        when overwrite:
+          configure: ['overwritten']
+        when machine == 'abel':
+          prepend configure: ['f']
+
+      when foo: # this one is equally specific, so non-deterministic, but
+                # should be stable
+        append configure: ['z']
+    """)
+    
+    eq_(['a', 'd', 'e'], p.evaluate_all(dict(package='zlib'))['configure'])
+    eq_(['f', 'a', 'd', 'e'], p.evaluate_all(dict(package='zlib', machine='abel'))['configure'])
+    eq_(['a', 'b', 'c'], p.evaluate_all(dict(package='hdf5', machine='abel'))['configure'])
+
+    # non-specified but stable:
+    eq_(['a', 'b', 'c', 'z'], p.evaluate_all(dict(package='hdf5', foo=True))['configure'])
+
+    # overwrite
+    eq_(['overwritten'], p.evaluate_all(dict(package='zlib', overwrite=True))['configure'])
+
+    # colliding prepend vs. overwrite
+    eq_(['overwritten'], p.evaluate_all(dict(package='zlib', overwrite=True,
+                                             machine='abel'))['configure'])

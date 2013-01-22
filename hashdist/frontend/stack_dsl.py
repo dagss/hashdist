@@ -31,16 +31,20 @@ Treatment of sections
                   # if it is sibling
             # not legal: var1=..., as it would create cycle
 
-**profiles**:
+**profile**:
     Currently does not allow conditions. Conditions implicitly added
     through `include` will be ignored. This needs to be hashed out.
 
 ::
 
     profiles:
-        name1:
-            package:
-                require-foo: true
+      - name: foo
+        extends: ['bar']
+        select:
+        - package: numpy
+          var2: true
+        - package: python
+      
 
 
 """
@@ -50,6 +54,8 @@ import os
 from os.path import join as pjoin
 from functools import total_ordering
 from .marked_yaml import marked_yaml_load
+
+_empty_set = frozenset()
 
 class IllegalStackSpecError(Exception):
     def __init__(self, msg, node=None):
@@ -69,7 +75,7 @@ class IllegalStackSpecError(Exception):
 class ConditionsNotNestedError(IllegalStackSpecError):
     pass
 
-class NoOptionFoundError(ValueError):
+class NoOptionFoundError(IllegalStackSpecError):
     pass
 
 ## Hmm, do we want to make it type-safe?
@@ -153,6 +159,8 @@ class Program(object):
                 cfg[varname] = None
 
 class Node(object):
+    _input_vars = _empty_set
+
     def __hash__(self):
         return hash(self.tuple)
 
@@ -182,7 +190,10 @@ _subst_re = re.compile(r"""
 """, re.IGNORECASE | re.VERBOSE)
 _get_re = re.compile(r'^\$([_a-z][_a-z0-9]*)$', re.IGNORECASE)
 
-class StringSubst(Node):
+class ExprNode(Node):
+    pass
+
+class StringSubst(ExprNode):
     def __init__(self, pattern):
         self.tuple = (StringSubst, pattern)
         self.pattern = pattern
@@ -204,8 +215,7 @@ class StringSubst(Node):
         x = _subst_re.sub(lookup, self.pattern)
         return _escape_re.sub('$', x)
 
-_empty_set = frozenset()
-class StringConstant(Node):
+class StringConstant(ExprNode):
     def __init__(self, value):
         self.value = value
         self.tuple = (StringConstant, value)
@@ -214,7 +224,40 @@ class StringConstant(Node):
     def evaluate(self, cfg):
         return self.value
 
-class Get(Node):
+class ListNode(ExprNode):
+    def __init__(self, items):
+        self.items = items
+        self.tuple = (ListNode, items)
+
+    def evaluate(self, cfg):
+        result = []
+        for node in self.items:
+            try:
+                value = node.evaluate(cfg)
+            except NoOptionFoundError:
+                pass
+            else:
+                result.append(value)
+        return result
+
+class DictNode(ExprNode):
+    def __init__(self, d):
+        self._dict = d
+        self.tuple = (DictNode, d)
+
+    def evaluate(self, cfg):
+        result = {}
+        for key, node in self._dict.items():
+            try:
+                value = node.evaluate(cfg)
+            except NoOptionFoundError:
+                pass
+            else:
+                result[key] = node
+        return result
+
+
+class Get(ExprNode):
     def __init__(self, varname):
         self.varname = varname
         self.tuple = (Get, varname)
@@ -223,18 +266,37 @@ class Get(Node):
     def evaluate(self, cfg):
         return cfg[self.varname]
 
-def parse_scalar(s):
-    m = _get_re.match(s)
-    if m:
-        return Get(m.group(1))
-    m = _subst_re.search(s)
-    if m:
-        return StringSubst(s)
-    else:
-        return StringConstant(s)
+class ActionNode(Node):
+    def __init__(self, expr):
+        self.expr = expr
+        self.tuple = (type(self), expr)
 
+    def input_vars(self):
+        return self.expr.input_vars()
 
-class Select(Node):
+class ListAction(ActionNode):
+    # in python terms, we really do an extend at the end
+    def apply(self, cfg, value):
+        if not isinstance(value, list):
+            raise IllegalStackSpecError('expected list but got %r' % type(value))
+        eval_result = self.expr.evaluate(cfg)
+        if not isinstance(eval_result, list):
+            raise IllegalStackSpecError('trying to append a non-list to a list')
+        return self._apply(eval_result, value)
+
+class Append(ListAction):
+    def _apply(self, eval_result, value):
+        return value + eval_result
+        
+class Prepend(ListAction):
+    def _apply(self, eval_result, value):
+        return eval_result + value
+
+class Assign(ActionNode):
+    def apply(self, cfg, value):
+        return self.expr.evaluate(cfg)
+
+class Select(ExprNode):
     def __init__(self, *options):
         # Always turn Select(Selection([a], [b]), [c]) to Select([a, b, c])
         def flatten(x):
@@ -255,10 +317,9 @@ class Select(Node):
         self.tuple = (Select, options)
 
         _input_vars = set()
-        for cond, value in self.options:
+        for cond, action in self.options:
             _input_vars.update(cond.input_vars())
-            if isinstance(value, Node):
-                _input_vars.update(value.input_vars())
+            _input_vars.update(action.input_vars())
         self._input_vars = frozenset(_input_vars)
 
     def __add__(self, other):
@@ -278,56 +339,89 @@ class Select(Node):
     def is_always_true(self):
         return all(tup[0] is True for tup in self.options)
 
-    def find_option(self, cfg):
-        """Which options out of multiple possible to pick?
+    def evaluate(self, cfg):
+        """Given a configuration, how to evaluate the set of (condition, action)?
 
-        The rule is to a) ensure that all conditions are nested within one
-        another, b) pick the most specific one.
+        Current rules:
+
+         - Rules only apply after filtering for conditions that apply
+           ('run-time'); before then ('compile-time') anything goes
+
+         - One must start with an Assign action. These are compared by
+           significance -- the one that is most specific (most &-ed terms)
+           wins.
+
+         - All less significant Assign actions must be have nested conditions,
+           i.e. they must be in a parent condition block, not in a side-branch,
+           so that the intent is clearly to overridde them.
+
+         - The Assign action must be the only action on the same level of
+           significance.
+
+         - The non-Assign actions that are more significant than the Assign
+           action are then applied, least significant first.
 
         May raise ConditionsNotNestedError or NoOptionFoundError.
         
         Returns
         -------
         
-        option: (Condition, Node)
-            The selected option from `self.options`
+        The resulting value
         """
         def cond_children(cond):
             if type(cond) is And:
                 return cond.children
+            elif type(cond) is TrueCondition:
+                return []
             else:
                 return [cond]
 
         # First filter options to get those that are satisfied by cfg only
         options = [opt for opt in self.options if opt[0].satisfied_by(cfg)]
-
         if len(options) == 0:
             raise NoOptionFoundError()
-        elif len(options) == 1:
-            return options[0]
-        else:
-            # TrueCondition is least specific, filter them out
-            options = [opt for opt in options if type(opt[0]) is not TrueCondition]
-            if len(options) == 0:
-                raise ConditionsNotNestedError("only TrueCondition present, cannot discriminate")
+        # Sort by number of terms in And, most specific option first
+        options.sort(key=lambda opt: len(cond_children(opt[0])), reverse=True)
 
-            # sort by number of and-ed terms, then check that each and-ed term is a superset
-            # of the previous one
-            options.sort(key=lambda option: len(cond_children(option[0])))
-            for i in range(len(options) - 1):
-                child_cond = options[i][0]
-                parent_cond = options[i + 1][0]
-                if set(cond_children(child_cond)).difference(cond_children(parent_cond)):
-                    raise ConditionsNotNestedError('%r not nested in %r' % (child_cond, parent_cond))
-            # OK, they're all nested, select the last (most specific) one
-            return options[-1]
-
-    def evaluate(self, cfg):
-        cond, node = self.find_option(cfg)
-        if node is None:
-            return None
+        # Find most specific (first) Assign
+        for i, (assign_cond, assign_action) in enumerate(options):
+            if type(assign_action) is Assign:
+                # rocheck that action is alone on this significance level
+                if i > 0:
+                    prev_cond_children = cond_children(options[i - 1])
+                    assign_cond_children = cond_children(assign_cond)
+                    if len(prev_cond_children) == len(assign_cond_children):
+                        raise ConditionsNotNestedError("variable assigned multiple times without discriminating"
+                                                       "conditions (%r not nested in %r)" % (prev_cond_children, assign_cond_children))
+                break
         else:
-            return node.evaluate(cfg)
+            raise IllegalStackSpecError("modifying where no initial assignment exists")
+
+        # roll i back a bit to raise an error if we skipped non-Assign actions on the
+        # same level (case of "assign foo:" and "foo:" in same block)
+        start = i
+        level = len(cond_children(assign_cond))
+        while start > 0 and len(cond_children(options[start][0])) == level:
+            start -= 1
+
+        print i, start
+
+        # Verify that all further actions have conditions that are subsets
+        # and don't diverge to another branch of requirements
+        assign_conds = set(cond_children(assign_cond))
+        for cond, _ in options[start + 1:]:
+            if cond is assign_cond:
+                continue
+            cond_set = set(cond_children(cond))
+            if not assign_conds.issuperset(cond_set) or len(assign_conds) == len(cond_set):
+                raise ConditionsNotNestedError("variable assigned multiple times without discriminating"
+                                               "conditions (%r not nested in %r)" % (cond_set, assign_conds))
+
+        # Execute
+        value = None
+        for cond, action in reversed(options[:i + 1]):
+            value = action.apply(cfg, value)
+        return value
 
 @total_ordering
 class Condition(Node):
@@ -371,6 +465,8 @@ class And(Condition):
         def flatten(x):
             if type(x) is And:
                 return x.children
+            elif type(x) is TrueCondition:
+                return []
             else:
                 return [x]
         self.children = children = sum([flatten(x) for x in children], [])
@@ -431,19 +527,6 @@ class Match(Condition):
 
     def _lt_same_type(self, other):
         return (self.varname, self.value) < (other.varname, other.value)
-
-class Assign(Node):
-    """AST node for "attrname: value" and "assign attrname: value"
-    """
-    def __init__(self, attrname, value):
-        self.attrname = attrname
-        self.value = value
-        self.tuple = (Assign, attrname, value)
-
-    def apply(self, attrs):
-        if self.attrname in attrs:
-            raise IllegalStackSpecError('"%s" assigned twice' % self.attrname)
-        attrs[self.attrname] = self.value
 
 class Extend(Node):
     """AST node for appending a list given a condition"""
@@ -541,54 +624,102 @@ def merge_parsed_dicts(a, b):
             result[key] = b_value
     return result
 
-def parse_dict_with_conditions(doc, under_condition=true_condition):
-    result = {}
-    # traverse in sorted order, just to make unit tests predictable
-    keys = sorted(doc.keys())
-    for key in keys:
-        value = doc[key]
-        cond = parse_condition(key)
-        if cond:
-            # it wasn't really a dict entry, just a condition marker, so the dict
-            # must "continue within"
-            if not isinstance(value, dict):
-                raise IllegalStackSpecError("dict-style matchers must have dict children; "
-                                            "otherwise use list-style mathers", value)
-            parsed_result = parse_dict_with_conditions(value, cond & under_condition)
+def merge_rhs_nodes(a, b):
+    def as_options(x):
+        if type(x) is Select:
+            return x.options
         else:
-            parsed_value = parse_condition_tree(value, under_condition)
-            parsed_result = {key: parsed_value}
-        result = merge_parsed_dicts(result, parsed_result)
+            return [(true_condition, x)]
+        
+    if not isinstance(a, ExprNode) and isinstance(b, ExprNode):
+        raise TypeError()
+
+    return Select(*(as_options(a) + as_options(b)))
+
+def parse_list(lst):
+    for item in lst:
+        parse
+
+
+def parse_scalar(s):
+    m = _get_re.match(s)
+    if m:
+        return Get(m.group(1))
+    m = _subst_re.search(s)
+    if m:
+        return StringSubst(s)
+    else:
+        return StringConstant(s)
+
+def parse_expression(value):
+    if isinstance(value, list):
+        items = [parse_expression(item) for item in value]
+        expr = ListNode(items)
+    elif isinstance(value, dict):
+        if any(parse_condition(x) for x in value.values()):
+            raise IllegalStackSpecError('conditions within lists/dicts not implemented yet')
+        items = dict((key, parse_expression(value)) for key, value in value.items())
+        expr = DictNode(items)
+    else:
+        expr = parse_scalar(value)
+    return expr
+
+_action_re = re.compile(r'^\s*(append|prepend)\s+(.*)$')
+
+def parse_action(key, value, under_condition):
+    m = _action_re.match(key)
+    if m:
+        action, varname = m.groups()
+    else:
+        action = 'assign'
+        varname = key
+
+    expr = parse_expression(value)
+    action_node = dict(assign=Assign, append=Append, prepend=Prepend)[action](expr)
+    select = Select((under_condition, action_node))
+    return varname, select
+
+def merge_assignments(a, b):
+    # a and b are both { varname : rhs_node }; merge the two
+    result = {}
+    for key, a_node in a.items():
+        if key not in b:
+            result[key] = a_node
+        else:
+            b_node = b[key]
+            result[key] = merge_rhs_nodes(a_node, b_node)
+    for key, b_node in b.items():
+        if key not in a:
+            result[key] = b_node
     return result
 
-def parse_condition_tree(doc, under_condition=true_condition):
+def parse_assignments(rules, under_condition=true_condition):
     """
-    Parses a tree of dict/list/str so that conditional expressions are made
-    available. In the resulting structure:
-
-     - Every dict has a Select as its value
-     - Every list is turned from [a, b, ...] to [(cond_a, a), (cond_b, b), ...]
-     - str is untouched because it is illegal to insert conditions into strings
-
-    Note that the input match statements must be placed according to the type
-    of their parent "value", i.e., if "a" has a list as its value, one does::
-
-        a:
-          - include_one=true:
-            - 1
-          - include_two=true:
-            - 2
-          - 3
-
-    whereas if "a" has a dict as its value::
-
-        a:
-          include_one=true:
-            one: 1
-          onclude_two=true:
-            two: 2
-          three: 3
+    Parses the assignments in the rules section. The result is a
+    dict { varname : Node }.
     """
+    if not isinstance(rules, dict):
+        raise IllegalStackSpecError("'rules' section must be a dict", rules)
+    result = {}
+    # traverse in sorted order, since some cases are non-deterministic in nature,
+    # and this at least makes it stable between runs (e.g., two satisfied
+    # non-nested conditions both appending to a list)
+    keys = sorted(rules.keys())
+    for key in keys:
+        value = rules[key]
+        cond = parse_condition(key)
+        if cond:
+            # The entry is a "when x=y"-clause; the dict continues within, so recurse
+            if not isinstance(value, dict):
+                raise IllegalStackSpecError("dict-style matchers must have dict children; "
+                                            "otherwise use list-style matchers", value)
+            new_assignments = parse_assignments(value, under_condition & cond)
+        else:
+            varname, rhs_node = parse_action(key, value, under_condition)
+            new_assignments = {varname: rhs_node}
+        result = merge_assignments(result, new_assignments)
+    return result
+    
     if isinstance(doc, dict):
         return parse_dict_with_conditions(doc, under_condition)
     elif isinstance(doc, list):
@@ -691,21 +822,22 @@ def parse_stack_dsl(stream, include_dir=None, encountered=None,
         include_section = []
 
     result = {}
-    include_list = parse_list_with_conditions(include_section)
-    if include_list and include_dir is None:
-        raise TypeError("No include_dir passed, but spec contains an include section")
-    for segment in include_list:
-        assert type(segment) is Extend
-        child_cond = under_condition & segment.condition
-        for basename in segment.value_list:
-            include_filename = resolve_included_file(basename)
-            included_doc = parse_stack_dsl_file(include_filename, encountered, child_cond)
-            result = merge_parsed_dicts(result, included_doc)
+    ## include_list = parse_list_with_conditions(include_section)
+    ## if include_list and include_dir is None:
+    ##     raise TypeError("No include_dir passed, but spec contains an include section")
+    ## for segment in include_list:
+    ##     assert type(segment) is Extend
+    ##     child_cond = under_condition & segment.condition
+    ##     for basename in segment.value_list:
+    ##         include_filename = resolve_included_file(basename)
+    ##         included_doc = parse_stack_dsl_file(include_filename, encountered, child_cond)
+    ##         result = merge_parsed_dicts(result, included_doc)
 
-    tree = parse_condition_tree(doc, under_condition)
+    assignments = parse_assignments(doc['rules'], under_condition)
     if program is None:
         program = Program()
-    insert_tree_in_program(tree, program)
+    for varname, node in assignments.items():
+        program.add_assignment(varname, node)
     return program
     
 def parse_stack_dsl_file(filename, encountered=None, under_condition=true_condition):
