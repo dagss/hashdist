@@ -1,11 +1,10 @@
 include:
-  - sources
   - project=numpy:
-      - build
+    - sources
+  - build
 
 profile:
-  numpy:
-    version: 1.6.2
-  scipy:
   zlib:
-    from_host: true
+    version: 1.2.7
+  szib:
+    version: 2.1

@@ -1,5 +1,5 @@
 build:
-  project=numpy:
+  package=numpy:
     type: distutils
     debian: python-numpy
     redhat: python-numpy
@@ -14,14 +14,14 @@ build:
         [blas_opt]
         libraries = f77blas, cblas, atlas
 
-  project=python:
+  package=python:
     version=2.7.3:
       archive: http://python.org/ftp/python/2.7.3/Python-2.7.3.tar.bz2
       sources: tar.bz2:ojsfpyi4wfj23q7ufcvpdea7yvq2g5gd
 
-  project=hdf5:
+  package=hdf5:
     type: configure-make-install
     
 
-  project=zlib:
+  package=zlib:
     type: configure-make-install

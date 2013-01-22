@@ -1,21 +1,40 @@
-include:
-  - sources
+declare:
+  - name: package
+    type: identifier
 
-build:
+  - name: version
+    type: version-number
+    deduce: true
+
+  - name: recipe
+    type: identifier
+
+  - name: configure-flags
+    type: string-list
+
+  - name: set-cflags-ldflags
+    type: boolean
+
+include:
+  - file: sources
+
+rules:
+  # These are defaults, anything matching a when-clause will override them
   set-cflags-ldflags: yes
   recipe: configure-make-install
+  configure: [--with-prefix=\$ARTIFACT]
 
-  package=hdf5:
-    configure-flags: [--with-szlib, --with-pic]
+  when package=hdf5:
+    build-deps:
+      - package: zlib
+        version: 0 to 1.3
 
-#  package=zlib:
-#    version=1.3:
-#      a: b
+      - when use-szip=true:
+        - package: szip
 
-profiles:
-  default:
-    zlib:
-#      version: 1.2.7
+    append configure: [--with-szlib, --with-pic]
 
-#  szip: any
-#  hdf5: any
+  when package=zlib:
+    append configure: [--with-szlib]
+    when machine=abel:
+      append configure: [--with-intel=/opt/intel]
