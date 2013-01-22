@@ -427,7 +427,10 @@ def pack_virtuals_envvar(virtuals):
     return ';'.join('%s=%s' % tup for tup in sorted(virtuals.items()))
 
 def unpack_virtuals_envvar(x):
-    return dict(tuple(tup.split('=')) for tup in x.split(';'))
+    if x.strip() == '':
+        return {}
+    else:
+        return dict(tuple(tup.split('=')) for tup in x.split(';'))
 
 
 def stable_topological_sort(problem):
