@@ -22,6 +22,12 @@ def configure_make_install_recipe(ctx, pkg, build_spec):
         ])
     build_spec['build']['env_nohash']['NCORES'] = str(ncores)
 
+@pipeline.add_recipe('pure-make')
+def pure_make_recipe(ctx, pkg, build_spec):
+    build_spec['build']['script'].extend([
+        ['make', 'install', 'PREFIX=$ARTIFACT']
+        ])
+
 @pipeline.add_recipe('nonhashed-host-symlinks')
 def nonhashed_host_symlinks_recipe(ctx, pkg, build_spec):
     # emit 'links' section in build spec
@@ -84,7 +90,7 @@ def jail(ctx, pkg, build_spec):
         raise Exception("need dependency on hdistjail to use jail") # TODO auto
 
     cmds = [
-        ['LD_PRELOAD=$HDISTJAIL/lib/hdistjail.so'],
+        ['LD_PRELOAD=$HDISTJAIL/lib/libhdistjail.so.1'],
         ['HDIST_JAIL_LOG=$(hdist', 'logpipe', 'jail', 'WARNING', ')'],
         ['HDIST_JAIL_WHITELIST=${BUILD}/whitelist'],
         ['hdist>whitelist', 'build-whitelist'],

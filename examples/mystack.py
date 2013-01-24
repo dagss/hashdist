@@ -50,14 +50,9 @@ gcc = hs.Package(
 hdistjail = hs.Package(
     package='hdistjail',
     version='0.1.dev',
-    recipe='custom-script',
+    recipe='pure-make',
     git_repos=['git@github.com:hashdist/hdist-jail.git gen'],
-    sources=['git:0822cd3ea3f7099ae5cd85081a8779fd21dbd300'],
-    script=[
-        ['make', 'build/hdistjail.so'],
-        ['mkdir', '$ARTIFACT/lib'],
-        ['cp', 'build/hdistjail.so', '$ARTIFACT/lib']
-        ],
+    sources=['git:e367142ea795ac0a197efb3edf60cf6b3b3d4486'],
     build_deps=[unix, gcc]
     )
 
