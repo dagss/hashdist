@@ -2,7 +2,7 @@ from .build import Pipeline
 from pprint import pprint
 from ..deps.yaml import safe_load as yaml
 
-ncores = 4
+ncores = 1
 
 
 pipeline = Pipeline()
@@ -83,9 +83,15 @@ def jail(ctx, pkg, build_spec):
     if not any(package.package == 'hdistjail' for package in pkg['build_deps']):
         raise Exception("need dependency on hdistjail to use jail") # TODO auto
 
+    cmds = [
+        ['LD_PRELOAD=$HDISTJAIL/lib/hdistjail.so'],
+        ['HDIST_JAIL_LOG=$(hdist', 'logpipe', 'jail', 'WARNING', ')'],
+        ['HDIST_JAIL_WHITELIST=${BUILD}/whitelist'],
+        ['hdist>whitelist', 'build-whitelist'],
+        ]
+    
     script = build_spec['build']['script']
-    script.insert(0, ['HDIST_JAIL_LOG=$(hdist', 'logpipe', 'jail', 'WARNING', ')'])
-    script.insert(0, ['LD_PRELOAD=$HDISTJAIL/lib/hdistjail.so'])
+    script[:] = cmds + script
 
 
 @pipeline.add_assemble_stage(before='assemble_end')
