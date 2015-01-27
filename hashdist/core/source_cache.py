@@ -870,7 +870,9 @@ class TarballHandler(object):
             raise CorruptSourceCacheError("Corrupted file: '%s'" % infile.name)
 
         with closing(self.tarfileobj_from_data(archive_data)) as tarfileobj:
-            with closing(tarfile.open(fileobj=tarfileobj, mode=self.read_mode)) as archive:
+            tarfile_obj = tarfile.open(fileobj=tarfileobj, mode=self.read_mode)
+            monkey_patch_issue_14160(tarfile_obj)
+            with closing(tarfile_obj) as archive:
                 members = archive.getmembers()
                 prefix_len = len(common_path_prefix([member.name for member in members
                                                      if member.type != tarfile.DIRTYPE]))
@@ -1086,3 +1088,30 @@ def silent_unlink(path):
         os.unlink(temp_file)
     except:
         pass
+
+
+def monkey_patch_issue_14160(tarfile_obj):
+    # See http://bugs.python.org/issue14160. We
+    #
+    # This may stop working in Python versions that have a too different
+    # Lib/tarfile.py.
+    def _find_link_target(self, tarinfo):
+        """Find the target member of a symlink or hardlink member in the
+           archive.
+        """
+        if tarinfo.issym():
+            # Always search the entire archive.
+            linkname = "/".join(filter(None, (os.path.dirname(tarinfo.name), tarinfo.linkname)))
+            limit = None
+        else:
+            # Search the archive before the link, because a hard link is
+            # just a reference to an already archived file.
+            linkname = tarinfo.linkname
+            limit = tarinfo
+
+        member = self._getmember(linkname, tarinfo=limit, normalize=True)
+        if member is None:
+            raise KeyError("linkname %r not found" % linkname)
+        return member
+
+    tarfile_obj._find_link_target = _find_link_target
